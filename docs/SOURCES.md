@@ -181,3 +181,46 @@ bir kat kart yuvası) karşılık geliyor ve 12.7mm'ye 0.9mm yakın.
 Yarım inç sabit bir sayı değil, belirli bir kalınlığın sonucu. Kalın
 cüzdanın daha çok pay istemesi doğru davranış; modeli 12.7'ye zorlamak
 hata olurdu.
+
+---
+
+## Çanta askısı (Faz 3'te eklendi)
+
+### BELGELENMİŞ
+`drop` = askının tepe noktasından çantanın üst kenarına dikey mesafe.
+
+| Tip | Drop | Toplam uzunluk | Çarpan |
+|---|---|---|---|
+| Tote sapı | 25–36 cm (10–14″) | ≈ 2 × drop | 2.0 |
+| Omuz askısı | 45–60 cm | ≈ 2 × drop | 2.0 |
+| Çapraz askı | 51–61 cm | **114–137 cm** | **2.3** |
+
+Çapraz askının çarpanı neden farklı: askı gövdeyi diyagonal kestiği için
+omuz askısından daha uzun bir yol izliyor. Kaynaklarda "toplam ≈ 2.3 ×
+drop" kuralı ayrıca belirtiliyor ve 2.3 × 55 = 126.5cm, belgelenen
+114–137cm bandının ortasına düşüyor.
+
+### Çanta derisi kalınlığı
+Panel 1.6–2.4mm (4–6 oz), askı 2.0–3.2mm. Cüzdan derisi (0.6–1.0mm)
+burada yetmez; ince panel sarkar, ince askı zamanla uzar ve kopar.
+
+## Körük uzunluğu — hesap, tahmin değil
+
+Körük panelin dikiş hattı boyunca dolanıyor, dolayısıyla uzunluğu o
+hattın **yay uzunluğu**:
+
+```
+körük = 2·(H − R) + (W − 2R) + 2·(πR/2)
+```
+
+Varsayılan (W 220, H 200, R 40): 2×160 + 140 + 125.7 = **585.7mm**
+
+Bu formülde tahmin yok — Adım 4'te kurulan yay uzunluğu makinesinin
+doğrudan uygulaması. Köşe yarıçapı büyüdükçe körük KISALIYOR (2R yerine
+πR/2 yol gidiliyor); test bunu doğruluyor.
+
+### Üç parçalı bölünme neden yay ortasından
+Yay sınırlarından bölmek daha sezgisel ama taban parçasını 285mm'ye
+çıkarıp A4'e sığmaz hâle getiriyor. Yay ortasından bölünce her iki parça
+da döndürülerek sayfaya sığıyor; ayrıca birleşim düz kenarda değil eğri
+üzerinde kalıyor ve daha az göze çarpıyor.

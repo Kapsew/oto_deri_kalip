@@ -399,18 +399,19 @@ function drawCoverPage(
   y -= 8;
   text(page, "6 — Ölçüler", left, y, 12, ctx.body);
   y -= 5.5;
-  const rows: [string, string][] = [
-    ["bölme genişliği", `${s.compartmentWidth.toFixed(1)} mm`],
-    ["kat payı", `${s.foldAllowance.toFixed(2)} mm`],
-    ["kapalı kalınlık", `${s.closedThickness.toFixed(2)} mm`],
-    ["kart yüklü", `${s.loadedThickness.toFixed(2)} mm`],
-    ["kenar kalınlığı", `${s.edgeThickness.toFixed(2)} mm`],
-  ];
-  for (const [k, v] of rows) {
-    text(page, k, left, y, 9, ctx.body, 0.3);
-    text(page, v, left + 55, y, 9, ctx.mono);
+  // ÖLÇÜLERİ AİLE BELİRLİYOR.
+  //
+  // Sabit satır listesi cüzdana göre adlandırılmıştı ve çantada
+  // "kart yüklü 80mm" gibi saçma satırlar üretiyordu. Her aile kendi
+  // etiketlerini veriyor; ortak olan tek şey adım ve delik sayısı.
+  for (const metric of s.metrics ?? []) {
+    text(page, metric.label, left, y, 9, ctx.body, 0.3);
+    text(page, metric.value, left + 55, y, 9, ctx.mono);
     y -= 4.4;
   }
+  text(page, "dikiş", left, y, 9, ctx.body, 0.3);
+  text(page, `${s.pitch}mm · ${s.totalHoles} delik`, left + 55, y, 9, ctx.mono);
+  y -= 4.4;
 
   // ── Uyarılar ─────────────────────────────────────────────────────────
   if (pattern.diagnostics.length > 0) {

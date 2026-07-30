@@ -17,6 +17,9 @@ export {
   familiesByCategory,
   generateBifold,
   generateCardHolder,
+  generateTote,
+  STRAP_SPECS,
+  TOTE_DEFAULTS,
 } from "@odk/patterns";
 
 export { stitchSummary as stitchSummaryFor } from "@odk/geometry";

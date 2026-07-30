@@ -104,9 +104,10 @@ export const FAMILIES: readonly PatternFamily[] = [
     id: "tote",
     category: "canta",
     name: "Körüklü çanta",
-    summary: "Yan körük ve taban, askı bağlantıları.",
-    status: "planlandi",
-    modules: ["Gusset", "Divider"],
+    summary: "Ön/arka panel, dolanan körük, isteğe bağlı askı.",
+    status: "hazir",
+    modules: ["Gusset", "Strap"],
+    typicalThickness: { min: 60, max: 120 },
   },
   {
     id: "belt",

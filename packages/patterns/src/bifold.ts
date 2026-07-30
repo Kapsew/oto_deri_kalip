@@ -458,6 +458,14 @@ export function generateBifold(params: BifoldParams): PatternResult {
     totalHoles: outerPlan.totalHoles,
     pitch: outerPlan.pitch,
     fitsA4,
+    metrics: [
+      { label: "panel genişliği", value: `${panelWidth.toFixed(1)} mm` },
+      { label: "açık ölçü", value: `${outerBox.width.toFixed(1)} × ${outerBox.height.toFixed(1)} mm` },
+      { label: "kat payı", value: `${foldAllowance.toFixed(2)} mm` },
+      { label: "boş kalınlık", value: `${closedThickness.toFixed(2)} mm` },
+      { label: "kart yüklü", value: `${loadedThickness.toFixed(2)} mm` },
+      { label: "banknot", value: billGeo.banknote.label },
+    ],
   };
 
   return { pieces, assembly, crossSection: solved, diagnostics, summary };

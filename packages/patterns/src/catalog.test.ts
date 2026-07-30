@@ -44,13 +44,15 @@ describe("katalog", () => {
     expect(availableFamilies().map((f) => f.id).sort()).toEqual([
       "bifold",
       "card-holder-fold",
+      "tote",
     ]);
   });
 
-  it("kartlık ve cüzdanda üretilebilir aile var, çantada yok", () => {
+  it("kartlık, cüzdan ve çantada üretilebilir aile var, aksesuarda yok", () => {
     expect(categoryHasAvailable("kartlik")).toBe(true);
     expect(categoryHasAvailable("cuzdan")).toBe(true);
-    expect(categoryHasAvailable("canta")).toBe(false);
+    expect(categoryHasAvailable("canta")).toBe(true);
+    expect(categoryHasAvailable("aksesuar")).toBe(false);
   });
 
   it("bilinmeyen id undefined döner", () => {

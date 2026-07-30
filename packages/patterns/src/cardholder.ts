@@ -150,6 +150,15 @@ export interface PatternSummary {
   readonly totalHoles: number;
   readonly pitch: Mm;
   readonly fitsA4: boolean;
+  /**
+   * Aileye özgü ek ölçüler.
+   *
+   * Özet alanları cüzdanlara göre adlandırılmış; çantada "kapalı
+   * kalınlık" derinlik demek, "bölme genişliği" çanta genişliği.
+   * Aileye özel değerleri (hacim, körük uzunluğu, askı boyu) zorlama
+   * yapmadan buradan taşıyoruz.
+   */
+  readonly metrics?: readonly { readonly label: string; readonly value: string }[];
 }
 
 export interface PatternResult {
@@ -468,6 +477,14 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
       totalHoles: outerPlan.totalHoles,
       pitch: outerPlan.pitch,
       fitsA4,
+      metrics: [
+        { label: "bölme genişliği", value: `${panelWidth.toFixed(1)} mm` },
+        { label: "yuva yığını", value: `${slotGeo.stackHeight.toFixed(1)} mm` },
+        { label: "kat payı", value: `${foldAllowance.toFixed(2)} mm` },
+        { label: "kapalı kalınlık", value: `${closedThickness.toFixed(2)} mm` },
+        { label: "kart yüklü", value: `${loadedThickness.toFixed(2)} mm` },
+        { label: "kenar kalınlığı", value: `${slotGeo.edgeThickness.toFixed(2)} mm` },
+      ],
     },
   };
 }

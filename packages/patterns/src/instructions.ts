@@ -25,7 +25,16 @@ import { PROVISIONAL_SKIVE_FACTOR } from "./material.js";
 export interface InstructionContext {
   readonly penAllowance: Mm;
   readonly stitchMargin: Mm;
-  readonly reveal: Mm;
+  /** Cüzdanlarda yuva kademesi; çantada yok. */
+  readonly reveal?: Mm;
+  /**
+   * Hangi adım dizisi kullanılacak.
+   *
+   * Cüzdan adımları ("yuvaları kademeyle diz") çantada anlamsız;
+   * çantanın kendi kritik hataları var (körüğü kaydırmak, askı dikişi).
+   * Tek bir metin ikisine birden uydurulamaz.
+   */
+  readonly kind?: "cuzdan" | "canta";
 }
 
 export interface InstructionStep {
@@ -44,6 +53,14 @@ export interface InstructionStep {
 export const GLUE_CURE_MINUTES = 120;
 
 export function buildInstructions(
+  pattern: PatternResult,
+  params: InstructionContext,
+): InstructionStep[] {
+  if (params.kind === "canta") return buildBagInstructions(pattern, params);
+  return buildWalletInstructions(pattern, params);
+}
+
+function buildWalletInstructions(
   pattern: PatternResult,
   params: InstructionContext,
 ): InstructionStep[] {
@@ -127,7 +144,7 @@ export function buildInstructions(
   const glueBandWidth = params.stitchMargin;
   add(
     "Yapıştır",
-    `En alttan başla. Yuvaları ${params.reveal}mm kademeyle diz: ` +
+    `En alttan başla. Yuvaları ${params.reveal ?? 12}mm kademeyle diz: ` +
       `${pattern.assembly.map((a) => a.code).join(" → ")}. ` +
       `Tutkalı yalnızca kenarlardaki ${glueBandWidth.toFixed(1)}mm'lik ` +
       `banda sür.`,
@@ -165,6 +182,107 @@ export function buildInstructions(
     `Kapalı kalınlık ${s.closedThickness.toFixed(1)}mm, kartlar takılıyken ` +
       `${s.loadedThickness.toFixed(1)}mm olmalı. Belirgin sapma varsa deri ` +
       `kalınlığı ya da tıraşlama farklı çıkmıştır — ölçüp uygulamaya geri bildir.`,
+  );
+
+  return steps;
+}
+
+
+// --- Çanta adımları --------------------------------------------------------
+
+/**
+ * Çantanın kritik hataları cüzdanınkinden farklı.
+ *
+ * Cüzdanda felaket tutkalın yuvaya taşması. Çantada körüğün panele
+ * kaydırılarak dikilmesi: körük uzunluğu panel hattının yay uzunluğuna
+ * göre TAM hesaplandığı için, bir uçtan başlayıp çekiştirerek dikmek
+ * diğer uçta fazlalık ya da eksiklik bırakır ve çanta çarpık oturur.
+ */
+function buildBagInstructions(
+  pattern: PatternResult,
+  params: InstructionContext,
+): InstructionStep[] {
+  const s = pattern.summary;
+  const steps: InstructionStep[] = [];
+  let n = 0;
+  const add = (title: string, body: string, warning?: string): void => {
+    n += 1;
+    steps.push(warning === undefined ? { n, title, body } : { n, title, body, warning });
+  };
+
+  const pieceList = pattern.pieces.map((p) => `${p.code} ×${p.quantity}`).join(", ");
+  const total = pattern.pieces.reduce((a, p) => a + p.quantity, 0);
+  const metric = (label: string): string | undefined =>
+    s.metrics?.find((m) => m.label === label)?.value;
+
+  add(
+    "Ölçeği doğrula",
+    "Kapak sayfasındaki 50mm kareyi cetvelle ölç. 50mm değilse ölçtüğün " +
+      "değeri uygulamaya gir, PDF'i yeniden indir ve aynı yazıcı ayarıyla bas.",
+    "Bu adımı atlarsan körük uzunluğu panele oturmaz; çanta köşelerden buruşur.",
+  );
+
+  add(
+    "Kağıt parçaları kes",
+    `Toplam ${total} parça: ${pieceList}. Kesim çizgisini kağıtta bırak, ` +
+      `dışından kes. Büyük parçalar birden fazla sayfaya bölünmüşse önce ` +
+      `sayfaları haçlardan hizalayıp yapıştır.`,
+  );
+
+  add(
+    "Deriyi kes",
+    `Panel ve körük parçalarını damar yönü aynı olacak şekilde yerleştir ve kes. ` +
+      `Körük uzunluğu ${metric("körük uzunluğu") ?? "?"}; bu değer panelin dikiş ` +
+      `hattının yay uzunluğundan hesaplandı, kısaltma ya da uzatma yapma.`,
+    "Askı en çok yük taşıyan parça: postun en sağlam bölgesinden (sırt) ve " +
+      "damar yönünde kes. Karın bölgesinden kesilen askı zamanla uzar.",
+  );
+
+  add(
+    "Delikleri işaretle",
+    `${s.pitch}mm pricking iron, panel başına ${s.totalHoles} delik. ` +
+      `Körüğün iki uzun kenarındaki delikler panelin delikleriyle birebir ` +
+      `aynı mesafelerde; kalıptan işaretle, kendin sayma.`,
+  );
+
+  add(
+    "Körüğü panele hizala",
+    `Körüğün ORTASINI panelin taban ortasıyla eşle ve oradan iki yana doğru ` +
+      `iğneleyerek ilerle. Köşe yayında deriyi hafifçe kıvırarak yürüt.`,
+    "Bir uçtan başlayıp çekiştirerek dikme. Körük uzunluğu tam hesaplandı; " +
+      "gerilerek dikilirse diğer uçta fazlalık kalır ve çanta çarpık oturur. " +
+      "İkinci paneli dikmeden önce birinci tarafın düzgün oturduğunu kontrol et — " +
+      "sonradan sökmek deriyi delik deliğe bırakır.",
+  );
+
+  add(
+    "Dik",
+    `Eyer dikişi ile önce körük–ön panel, sonra körük–arka panel. ` +
+      `Toplam ${s.totalHoles * 2} delikten geçilecek.`,
+  );
+
+  const strapMetric = s.metrics?.find((m) => m.label.includes("askı") || m.label.includes("sap"));
+  if (strapMetric !== undefined) {
+    add(
+      "Askıyı bağla",
+      `${strapMetric.label}: ${strapMetric.value}. Uçları çantanın yan üst ` +
+        `köşelerine bindirip dik.`,
+      "Askı dikişini çift sıra ya da X dikiş yap. Tek sıra düz dikiş, " +
+        "çantanın tüm ağırlığını birkaç deliğe yükler ve deri o noktadan yırtılır.",
+    );
+  }
+
+  add(
+    "Kenarları bitir",
+    "Kenarları zımparala, kenar boyası ya da cila uygula.",
+    "Kenar bitirme dikişten SONRA yapılır — cüzdanın tersi. Çantada kenarlar " +
+      "körük ve panel katmanlarından oluşuyor; dikilmeden hizalanamaz.",
+  );
+
+  add(
+    "Kontrol et",
+    `Hacim ${metric("hacim") ?? "?"}, derinlik ${s.closedThickness.toFixed(0)}mm. ` +
+      `Çanta boşken kendi başına dik durmalı; sarkıyorsa panel derisi ince kalmış.`,
   );
 
   return steps;

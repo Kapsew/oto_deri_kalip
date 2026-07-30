@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import type {
   BifoldParams,
+  GussetStyle,
+  StrapStyle,
+  ToteParams,
   CardHolderParams,
   CardOrientation,
   Currency,
@@ -16,11 +19,13 @@ import {
   familiesByCategory,
   generateBifold,
   generateCardHolder,
+  generateTote,
   stitchSummaryFor,
   STATUS_LABEL,
+  TOTE_DEFAULTS,
 } from "./engine.js";
 
-type FamilyId = "card-holder-fold" | "bifold";
+type FamilyId = "card-holder-fold" | "bifold" | "tote";
 import { PieceView } from "./PieceView.js";
 
 /**
@@ -164,11 +169,17 @@ export default function App() {
   const [family, setFamily] = useState<FamilyId>("card-holder-fold");
   const [params, setParams] = useState<CardHolderParams>(DEFAULT_PARAMS);
   const [bifold, setBifold] = useState<BifoldParams>(BIFOLD_DEFAULTS);
+  const [tote, setTote] = useState<ToteParams>(TOTE_DEFAULTS);
   const [print, setPrint] = useState<PrintState>(INITIAL_PRINT);
 
   const isBifold = family === "bifold";
-  // Talimatlar ve PDF her iki aile için de bu dar bağlamı kullanıyor.
-  const ctx = isBifold ? bifold : params;
+  const isTote = family === "tote";
+  // Talimatlar ve PDF üç aile için de bu dar bağlamı kullanıyor.
+  const ctx = isTote
+    ? { ...tote, kind: "canta" as const }
+    : isBifold
+      ? bifold
+      : params;
 
   const set = <K extends keyof CardHolderParams>(
     key: K,
@@ -178,11 +189,18 @@ export default function App() {
   const setB = <K extends keyof BifoldParams>(key: K, value: BifoldParams[K]) =>
     setBifold((p) => ({ ...p, [key]: value }));
 
+  const setT = <K extends keyof ToteParams>(key: K, value: ToteParams[K]) =>
+    setTote((p) => ({ ...p, [key]: value }));
+
   const result = useMemo(() => {
     try {
       return {
         ok: true as const,
-        value: isBifold ? generateBifold(bifold) : generateCardHolder(params),
+        value: isTote
+          ? generateTote(tote)
+          : isBifold
+            ? generateBifold(bifold)
+            : generateCardHolder(params),
       };
     } catch (err) {
       return {
@@ -190,7 +208,7 @@ export default function App() {
         message: err instanceof Error ? err.message : String(err),
       };
     }
-  }, [isBifold, params, bifold]);
+  }, [isBifold, isTote, params, bifold, tote]);
 
   return (
     <div className="shell">
@@ -242,7 +260,137 @@ export default function App() {
           ))}
         </div>
 
-        {isBifold ? (
+        {isTote ? (
+          <fieldset className="group" style={{ border: 0, margin: 0, padding: 0 }}>
+            <legend>Çanta</legend>
+            <Slider
+              label="Genişlik"
+              value={tote.width}
+              min={140}
+              max={340}
+              step={5}
+              unit="mm"
+              onChange={(v) => setT("width", v)}
+            />
+            <Slider
+              label="Yükseklik"
+              value={tote.height}
+              min={120}
+              max={340}
+              step={5}
+              unit="mm"
+              onChange={(v) => setT("height", v)}
+            />
+            <Slider
+              label="Derinlik (körük)"
+              value={tote.depth}
+              min={30}
+              max={160}
+              step={5}
+              unit="mm"
+              onChange={(v) => setT("depth", v)}
+            />
+            <Slider
+              label="Alt köşe yarıçapı"
+              value={tote.cornerRadius}
+              min={10}
+              max={90}
+              step={5}
+              unit="mm"
+              hint="Derinliğin yarısından küçük olursa körük köşede buruşur."
+              onChange={(v) => setT("cornerRadius", v)}
+            />
+            <Choice<GussetStyle>
+              label="Körük"
+              value={tote.gusset}
+              options={[
+                { value: "uc-parca", label: "Üç parça" },
+                { value: "tek-parca", label: "Tek parça" },
+              ]}
+              hint="Üç parça A4'e sığar ama iki ek dikiş getirir. Tek parça dikişsiz ama sayfalara bölünür."
+              onChange={(v) => setT("gusset", v)}
+            />
+            <Select
+              label="Askı"
+              value={tote.strap}
+              options={[
+                { value: "yok", label: "Askısız" },
+                { value: "el", label: "El sapı (2 adet)" },
+                { value: "omuz", label: "Omuz askısı" },
+                { value: "capraz", label: "Çapraz askı" },
+              ]}
+              onChange={(v) => setT("strap", v as StrapStyle)}
+            />
+            {tote.strap !== "yok" && (
+              <Slider
+                label="Askı drop"
+                value={(tote.strapDrop ?? 550) / 10}
+                min={20}
+                max={70}
+                step={1}
+                unit="cm"
+                hint="Askının tepesinden çantanın üst kenarına dikey mesafe."
+                onChange={(v) => setT("strapDrop", v * 10)}
+              />
+            )}
+            <Slider
+              label="Panel derisi"
+              value={tote.panelThickness}
+              min={1.0}
+              max={3.0}
+              step={0.1}
+              unit="mm"
+              hint="Çanta yapısal yük taşıyor: 1.6–2.4mm öneriliyor."
+              onChange={(v) => setT("panelThickness", v)}
+            />
+            <Slider
+              label="Körük derisi"
+              value={tote.gussetThickness}
+              min={1.0}
+              max={2.6}
+              step={0.1}
+              unit="mm"
+              onChange={(v) => setT("gussetThickness", v)}
+            />
+            <Slider
+              label="Askı derisi"
+              value={tote.strapThickness}
+              min={1.4}
+              max={3.6}
+              step={0.1}
+              unit="mm"
+              onChange={(v) => setT("strapThickness", v)}
+            />
+            <Slider
+              label="Dikiş payı"
+              value={tote.stitchMargin}
+              min={3}
+              max={6}
+              step={0.5}
+              unit="mm"
+              onChange={(v) => setT("stitchMargin", v)}
+            />
+            <Select
+              label="Pricking iron"
+              value={tote.pitch === undefined ? "auto" : String(tote.pitch)}
+              options={[
+                { value: "3.85", label: "3.85 mm" },
+                { value: "4", label: "4.0 mm" },
+                { value: "5", label: "5.0 mm" },
+                { value: "auto", label: "Oto — en az delik" },
+              ]}
+              onChange={(v) =>
+                setTote((p) => {
+                  if (v === "auto") {
+                    const { pitch: _drop, ...rest } = p;
+                    return rest;
+                  }
+                  return { ...p, pitch: Number(v) };
+                })
+              }
+            />
+          </fieldset>
+        ) : isBifold ? (
           <fieldset className="group" style={{ border: 0, margin: 0, padding: 0 }}>
             <legend>Bifold</legend>
             <Slider
@@ -567,9 +715,11 @@ export default function App() {
                     printAllHoles: print.printAllHoles,
                     allowRotation: print.allowRotation,
                     scaleFactor: print.scaleFactor,
-                    title: isBifold
-                      ? `Bifold ${bifold.cardSlotsPerSide}+${bifold.cardSlotsPerSide} yuva`
-                      : `Kartlık ${params.cardCount} yuva`,
+                    title: isTote
+                      ? `Çanta ${tote.width}x${tote.height}x${tote.depth}`
+                      : isBifold
+                        ? `Bifold ${bifold.cardSlotsPerSide}+${bifold.cardSlotsPerSide} yuva`
+                        : `Kartlık ${params.cardCount} yuva`,
                     params: ctx,
                   }),
                 )
@@ -607,7 +757,7 @@ export default function App() {
             </li>
           </ul>
         ) : (
-          <Result value={result.value} ctx={ctx} isBifold={isBifold} />
+          <Result value={result.value} ctx={ctx} family={family} />
         )}
       </main>
     </div>
@@ -617,11 +767,11 @@ export default function App() {
 function Result({
   value,
   ctx,
-  isBifold,
+  family,
 }: {
   value: ReturnType<typeof generateCardHolder>;
-  ctx: CardHolderParams | BifoldParams;
-  isBifold: boolean;
+  ctx: CardHolderParams | BifoldParams | (ToteParams & { kind: "canta" });
+  family: FamilyId;
 }) {
   const s = value.summary;
   const outer = value.pieces.find((p) => p.id === "outer");
@@ -642,11 +792,12 @@ function Result({
       <div className="stage-head">
         <h2>Parçalar</h2>
         <span className="scale-note">
-          {isBifold
-            ? `${(ctx as BifoldParams).cardSlotsPerSide}+${(ctx as BifoldParams).cardSlotsPerSide} yuva`
-            : `${(ctx as CardHolderParams).cardCount} yuva`}{" "}
-          · {ctx.construction === "t-slot" ? "T-slot" : "düz yığın"} · {s.pitch}mm
-          adım · {s.totalHoles} delik
+          {family === "tote"
+            ? `${(ctx as ToteParams).width}×${(ctx as ToteParams).height}×${(ctx as ToteParams).depth}mm`
+            : family === "bifold"
+              ? `${(ctx as BifoldParams).cardSlotsPerSide}+${(ctx as BifoldParams).cardSlotsPerSide} yuva · ${(ctx as BifoldParams).construction === "t-slot" ? "T-slot" : "düz yığın"}`
+              : `${(ctx as CardHolderParams).cardCount} yuva · ${(ctx as CardHolderParams).construction === "t-slot" ? "T-slot" : "düz yığın"}`}{" "}
+          · {s.pitch}mm adım · {s.totalHoles} delik
         </span>
       </div>
 
@@ -719,29 +870,17 @@ function Result({
         <table className="readout">
           <caption>Ölçüler</caption>
           <tbody>
+            {(s.metrics ?? []).map((mt) => (
+              <tr key={mt.label}>
+                <th scope="row">{mt.label}</th>
+                <td className="num">{mt.value}</td>
+              </tr>
+            ))}
             <tr>
-              <th scope="row">bölme genişliği</th>
-              <td className="num">{s.compartmentWidth.toFixed(1)} mm</td>
-            </tr>
-            <tr>
-              <th scope="row">yuva yığını</th>
-              <td className="num">{s.slotStackHeight.toFixed(1)} mm</td>
-            </tr>
-            <tr>
-              <th scope="row">kat payı</th>
-              <td className="num">{s.foldAllowance.toFixed(2)} mm</td>
-            </tr>
-            <tr>
-              <th scope="row">kapalı kalınlık</th>
-              <td className="num">{s.closedThickness.toFixed(2)} mm</td>
-            </tr>
-            <tr>
-              <th scope="row">kart yüklü</th>
-              <td className="num">{s.loadedThickness.toFixed(2)} mm</td>
-            </tr>
-            <tr>
-              <th scope="row">kenar kalınlığı</th>
-              <td className="num">{s.edgeThickness.toFixed(2)} mm</td>
+              <th scope="row">dikiş</th>
+              <td className="num">
+                {s.pitch}mm · {s.totalHoles} delik
+              </td>
             </tr>
             <tr>
               <th scope="row">A4</th>

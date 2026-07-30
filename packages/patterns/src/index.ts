@@ -10,6 +10,7 @@ export * from "./cardslot.js";
 export * from "./cardholder.js";
 export * from "./banknote.js";
 export * from "./bifold.js";
+export * from "./tote.js";
 export * from "./catalog.js";
 export * from "./instructions.js";
 export * from "./stitchprojection.js";
