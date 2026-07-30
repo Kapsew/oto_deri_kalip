@@ -136,6 +136,73 @@ describe("solveCrossSection — basit bifold", () => {
   });
 });
 
+describe("kıvrımda katman olmayan dolgu (gaps)", () => {
+  const a = layer("a", 1.0);
+  const b = layer("b", 1.0);
+
+  function withGap(gap: number) {
+    const cs: CrossSection = {
+      name: "dolgu",
+      layers: [a, b],
+      runs: [{ id: "r", name: "r", length: 50, layers: ["a", "b"] }],
+      folds: [
+        {
+          id: "f",
+          name: "f",
+          angleDeg: 180,
+          innerRadius: 0.5,
+          stack: ["a", "b"],
+          gaps: { b: gap },
+        },
+      ],
+    };
+    return solveCrossSection(cs);
+  }
+
+  it("dolgu dış katmanı uzatıyor, iç katmanı etkilemiyor", () => {
+    const none = withGap(0);
+    const some = withGap(4);
+    expect(layerResult(some, "a")?.flatLength).toBeCloseTo(
+      layerResult(none, "a")?.flatLength as number,
+      9,
+    );
+    expect(layerResult(some, "b")?.flatLength).toBeGreaterThan(
+      layerResult(none, "b")?.flatLength as number,
+    );
+  });
+
+  it("uzama tam olarak θ × dolgu kadar", () => {
+    const delta =
+      (layerResult(withGap(4), "b")?.flatLength as number) -
+      (layerResult(withGap(0), "b")?.flatLength as number);
+    expect(delta).toBeCloseTo(foldLengthDelta(4, 180), 9);
+  });
+
+  it("yığında olmayan katmana dolgu hata veriyor", () => {
+    const r = solveCrossSection({
+      name: "hatalı",
+      layers: [a],
+      runs: [{ id: "r", name: "r", length: 50, layers: ["a"] }],
+      folds: [
+        {
+          id: "f",
+          name: "f",
+          angleDeg: 180,
+          innerRadius: 0.5,
+          stack: ["a"],
+          gaps: { yok: 2 },
+        },
+      ],
+    });
+    expect(r.diagnostics.some((d) => d.code === "GAP_NOT_IN_STACK")).toBe(true);
+  });
+
+  it("negatif dolgu hata veriyor", () => {
+    const r = withGap(-1);
+    expect(r.diagnostics.some((d) => d.code === "NEGATIVE_GAP")).toBe(true);
+  });
+});
+
 describe("k-faktörü ikincil terim — büyüklük kontrolü", () => {
   /**
    * Bu test bir davranışı değil, bir TASARIM İDDİASINI doğruluyor:
@@ -244,6 +311,7 @@ describe("doğrulama", () => {
   });
 
   it("fiziksel olarak çok keskin yarıçapı uyarı olarak bildirir", () => {
+    // Ölçüt EN İÇ KATMANIN kalınlığı: 4mm deri 0.1mm yarıçapla kıvrılamaz.
     const thick = layer("t", 4);
     const r = solveCrossSection({
       name: "keskin",

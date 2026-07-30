@@ -9,6 +9,7 @@ import {
   categoryHasAvailable,
   STATUS_LABEL,
 } from "./catalog.js";
+import type { CardHolderParams } from "./cardholder.js";
 import { DEFAULT_PARAMS, generateCardHolder } from "./cardholder.js";
 import { buildInstructions, GLUE_CURE_MINUTES } from "./instructions.js";
 
@@ -40,11 +41,15 @@ describe("katalog", () => {
   it("yalnızca gerçekten üretilebilen aile hazır işaretli", () => {
     // DÜRÜSTLÜK TESTİ: bu liste büyürse jeneratörü de eklenmiş olmalı.
     // Var olmayan bir aileyi hazır göstermek kullanıcının zamanını çalar.
-    expect(availableFamilies().map((f) => f.id)).toEqual(["card-holder-fold"]);
+    expect(availableFamilies().map((f) => f.id).sort()).toEqual([
+      "bifold",
+      "card-holder-fold",
+    ]);
   });
 
-  it("kartlık kategorisinde üretilebilir aile var, çantada yok", () => {
+  it("kartlık ve cüzdanda üretilebilir aile var, çantada yok", () => {
     expect(categoryHasAvailable("kartlik")).toBe(true);
+    expect(categoryHasAvailable("cuzdan")).toBe(true);
     expect(categoryHasAvailable("canta")).toBe(false);
   });
 
@@ -83,11 +88,11 @@ describe("yapım adımları", () => {
 
   it("adımlar KALIPTAN türetiliyor, sabit metin değil", () => {
     // Parametre değişince metin de değişmeli.
-    const other = generateCardHolder({ ...DEFAULT_PARAMS, cardCount: 7 });
-    const otherSteps = buildInstructions(other, {
-      ...DEFAULT_PARAMS,
-      cardCount: 7,
-    });
+    // Nesne literalini doğrudan geçmek fazla-özellik denetimine takılır;
+    // InstructionContext bilerek dar tutuldu.
+    const p7: CardHolderParams = { ...DEFAULT_PARAMS, cardCount: 7 };
+    const other = generateCardHolder(p7);
+    const otherSteps = buildInstructions(other, p7);
     const glue = steps.find((s) => s.title === "Yapıştır");
     const otherGlue = otherSteps.find((s) => s.title === "Yapıştır");
     expect(glue?.body).not.toBe(otherGlue?.body);
@@ -130,14 +135,10 @@ describe("yapım adımları", () => {
   });
 
   it("kart sayısı arttıkça yapıştırma sırası uzuyor", () => {
-    const few = buildInstructions(
-      generateCardHolder({ ...DEFAULT_PARAMS, cardCount: 2 }),
-      { ...DEFAULT_PARAMS, cardCount: 2 },
-    );
-    const many = buildInstructions(
-      generateCardHolder({ ...DEFAULT_PARAMS, cardCount: 8 }),
-      { ...DEFAULT_PARAMS, cardCount: 8 },
-    );
+    const p2: CardHolderParams = { ...DEFAULT_PARAMS, cardCount: 2 };
+    const p8: CardHolderParams = { ...DEFAULT_PARAMS, cardCount: 8 };
+    const few = buildInstructions(generateCardHolder(p2), p2);
+    const many = buildInstructions(generateCardHolder(p8), p8);
     const seq = (x: typeof few) =>
       (x.find((s) => s.title === "Yapıştır")?.body ?? "").split("→").length;
     expect(seq(many)).toBeGreaterThan(seq(few));

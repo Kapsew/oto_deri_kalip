@@ -607,3 +607,30 @@ button.primary:disabled {
   color: var(--bone) !important;
   font-size: 12px !important;
 }
+
+button.fam-item {
+  width: 100%;
+  background: none;
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+button.fam-item:disabled {
+  cursor: default;
+}
+
+button.fam-item[data-active="true"] {
+  background: var(--mat);
+  color: var(--bone);
+  font-weight: 600;
+}
+
+button.fam-item:not(:disabled):hover {
+  color: var(--bone);
+}
+
+button.fam-item:focus-visible {
+  outline: 2px solid var(--chalk);
+  outline-offset: -2px;
+}

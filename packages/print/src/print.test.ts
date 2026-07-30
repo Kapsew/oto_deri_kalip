@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { PDFDocument } from "pdf-lib";
 import { mmToPt } from "@odk/geometry";
+import type { CardHolderParams } from "@odk/patterns";
 import { DEFAULT_PARAMS, generateCardHolder, buildInstructions } from "@odk/patterns";
 import {
   A4_PORTRAIT,
@@ -340,13 +341,12 @@ describe("PDF üretimi", () => {
   it("adım sayfası sayısı metin uzunluğuna göre hesaplanıyor", async () => {
     // Sabit "sayfa başına N adım" varsayımı yok; 8 yuvalı kalıpta
     // yapıştırma sırası uzuyor ve taşma buna göre hesaplanmalı.
-    const big = generateCardHolder({ ...DEFAULT_PARAMS, cardCount: 8 });
-    const steps = buildInstructions(big, { ...DEFAULT_PARAMS, cardCount: 8 });
+    const p8: CardHolderParams = { ...DEFAULT_PARAMS, cardCount: 8 };
+    const big = generateCardHolder(p8);
+    const steps = buildInstructions(big, p8);
     expect(steps.length).toBeGreaterThan(8);
     const doc = await PDFDocument.load(
-      await buildPatternPdf(big, FONTS, {
-        params: { ...DEFAULT_PARAMS, cardCount: 8 },
-      }),
+      await buildPatternPdf(big, FONTS, { params: p8 }),
     );
     expect(doc.getPageCount()).toBeGreaterThan(4);
   });

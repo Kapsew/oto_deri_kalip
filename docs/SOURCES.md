@@ -138,3 +138,46 @@ deniyor.
 2. Farklı sertliklerde aynı ölçüm → sertlik-k ilişkisi
 3. Tıraşlanmış vs tıraşlanmamış örtüşme kalınlığı → skive oranı
 4. 4, 6, 8 yuvalı T-slot cüzdanlarda gerçek kademe → reveal doğrulaması
+
+---
+
+## Banknot ölçüleri (Faz 3'te eklendi)
+
+### BELGELENMİŞ
+| Para birimi | En büyük kupür | Ölçü |
+|---|---|---|
+| TRY | 200 TL | **160 × 72 mm** |
+| USD | tüm kupürler | **156 × 66.3 mm** |
+
+TCMB: tüm TL banknotları uzun kenarda 6mm, kısa kenarda ikili grup
+hâlinde 4mm farkla basılıyor — en büyük kupür diğerlerini kapsıyor.
+
+### ⚠ DOĞRULANMADI
+| Para birimi | Kullanılan değer | Not |
+|---|---|---|
+| EUR | 153 × 77 mm (200 €) | Europa serisi. Eski seri 200/500 € daha büyüktü (160 × 82). |
+| GBP | 146 × 77 mm (£50) | Polimer seri. |
+
+Kodda `verified: false` ile işaretli; bu para birimleri seçildiğinde
+arayüz ve PDF uyarı gösteriyor.
+
+## Bifold kat payı — dolgu modeli
+
+Yarım inç kuralı (12.7mm) kıvrımda katman olmayan dolgu modellenmeden
+üretilemiyor. Yalnızca iki deri katmanıyla model 2.6mm veriyor.
+
+Dolgu = panel başına kart yığını (yuva derileri + kartlar). Model:
+
+| Panel başına yuva | Kat payı | Boş kalınlık |
+|---|---|---|
+| 1 | 7.2mm | 4.8mm |
+| 2 | **11.8mm** | 6.2mm |
+| 3 | 16.4mm | 7.6mm |
+| 4 | 21.0mm | 9.0mm |
+
+2 yuva satırı MAKESUPPLY'in "bare minimum" tarifine (dış kabuk, iç kabuk,
+bir kat kart yuvası) karşılık geliyor ve 12.7mm'ye 0.9mm yakın.
+
+Yarım inç sabit bir sayı değil, belirli bir kalınlığın sonucu. Kalın
+cüzdanın daha çok pay istemesi doğru davranış; modeli 12.7'ye zorlamak
+hata olurdu.

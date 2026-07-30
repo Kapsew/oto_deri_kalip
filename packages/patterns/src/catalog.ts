@@ -87,7 +87,7 @@ export const FAMILIES: readonly PatternFamily[] = [
     category: "cuzdan",
     name: "Bifold cüzdan",
     summary: "Banknot bölmesi üzerinde iki yanda kart yuvaları.",
-    status: "planlandi",
+    status: "hazir",
     modules: ["CardSlot", "BillPocket"],
     typicalThickness: { min: 6, max: 12 },
   },

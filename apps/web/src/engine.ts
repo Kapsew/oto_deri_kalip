@@ -6,6 +6,8 @@
  * bileşenlerin değişmemesini sağlıyor.
  */
 export {
+  BIFOLD_DEFAULTS,
+  BANKNOTES,
   CATEGORIES,
   DEFAULT_PARAMS,
   FAMILIES,
@@ -13,6 +15,7 @@ export {
   buildInstructions,
   categoryHasAvailable,
   familiesByCategory,
+  generateBifold,
   generateCardHolder,
 } from "@odk/patterns";
 

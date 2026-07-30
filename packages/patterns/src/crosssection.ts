@@ -69,6 +69,20 @@ export interface Fold {
   readonly innerRadius: Mm;
   /** Katman id'leri, içten dışa. */
   readonly stack: readonly string[];
+  /**
+   * Katman OLMAYAN dolgu: id'si verilen katmanın hemen İÇİNE eklenen
+   * kalınlık (mm).
+   *
+   * NİYE GEREKLİ: bifold'da dış kabuk, iç kabuğun etrafını değil
+   * TÜM İÇERİĞİN etrafını dolanır — kart yığını, kartların kendisi,
+   * banknot. Bu içerik kıvrımdan geçen bir deri katmanı değil, ama dış
+   * kabuğun yürüyeceği yarıçapı belirliyor.
+   *
+   * Bu alan olmadan modelin verdiği dış/iç fark 2.8mm çıkıyordu;
+   * belgelenmiş yarım inç kuralı 12.7mm diyor. Aradaki farkın tamamı
+   * bu dolgudan geliyor.
+   */
+  readonly gaps?: Readonly<Record<string, Mm>>;
 }
 
 /** Düz bir bölüm (kıvrım olmayan kısım). */
@@ -162,6 +176,7 @@ export function stackThickness(
 ): Mm {
   let total = 0;
   for (const id of fold.stack) {
+    total += fold.gaps?.[id] ?? 0;
     const l = index.get(id);
     if (l !== undefined) total += l.spec.thickness;
   }
@@ -204,6 +219,9 @@ export function solveCrossSection(cs: CrossSection): CrossSectionResult {
     for (const id of fold.stack) {
       const layer = index.get(id);
       if (layer === undefined) continue;
+
+      // Bu katmandan önce gelen, katman olmayan dolgu.
+      insideThickness += fold.gaps?.[id] ?? 0;
 
       const t = layer.spec.thickness;
       const neutralRadius =
@@ -320,6 +338,24 @@ function validate(
       });
     }
 
+    for (const id of Object.keys(fold.gaps ?? {})) {
+      if (!fold.stack.includes(id)) {
+        out.push({
+          severity: "error",
+          code: "GAP_NOT_IN_STACK",
+          message: `"${fold.name}" kıvrımında dolgu tanımsız katmana atıf yapıyor: ${id}`,
+        });
+      }
+      const g = fold.gaps?.[id];
+      if (g !== undefined && g < 0) {
+        out.push({
+          severity: "error",
+          code: "NEGATIVE_GAP",
+          message: `"${fold.name}" kıvrımında "${id}" için negatif dolgu.`,
+        });
+      }
+    }
+
     const seen = new Set<string>();
     for (const id of fold.stack) {
       if (!index.has(id)) {
@@ -339,19 +375,30 @@ function validate(
       seen.add(id);
     }
 
-    // Fiziksel makullük: deri sardığı yığından daha keskin kıvrılamaz.
-    const wrapped = stackThickness(fold, index);
-    const natural = naturalInnerRadius(wrapped);
-    if (fold.innerRadius + EPS < natural * 0.5) {
-      out.push({
-        severity: "warning",
-        code: "TIGHT_RADIUS",
-        message:
-          `"${fold.name}" iç yarıçapı (${fold.innerRadius.toFixed(2)}mm) ` +
-          `yığın kalınlığına göre çok keskin. ` +
-          `Doğal yarıçap ~${natural.toFixed(2)}mm. ` +
-          `Kalıp kısa çıkabilir ve katlarken kilitlenir.`,
-      });
+    // Fiziksel makullük: deri KENDİ kalınlığından daha keskin kıvrılamaz.
+    //
+    // Ölçüt bilerek EN İÇ KATMANIN kalınlığı, tüm yığın değil. İlk
+    // sürümde yığın kalınlığına bakılıyordu ve bifold'da her zaman
+    // yanlış uyarı veriyordu: dolgulu bir kıvrımda en iç katman kendi
+    // etrafına sarılır (yarıçap ~0.4mm), dış katman ise tüm içeriğin
+    // etrafını dolanır. İkisinin yarıçapı doğal olarak çok farklı ve
+    // "innerRadius" tanımı gereği yalnızca en içtekini tarif eder.
+    const innermostId = fold.stack[0];
+    const innermost =
+      innermostId === undefined ? undefined : index.get(innermostId);
+    if (innermost !== undefined) {
+      const minRadius = innermost.spec.thickness * 0.5;
+      if (fold.innerRadius + EPS < minRadius) {
+        out.push({
+          severity: "warning",
+          code: "TIGHT_RADIUS",
+          message:
+            `"${fold.name}" iç yarıçapı (${fold.innerRadius.toFixed(2)}mm) ` +
+            `en iç katmanın kalınlığına göre çok keskin ` +
+            `(en az ~${minRadius.toFixed(2)}mm olmalı). ` +
+            `Deri bu yarıçapta kırılır ve kalıp kısa çıkar.`,
+        });
+      }
     }
   }
 

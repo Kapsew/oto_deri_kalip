@@ -1,5 +1,5 @@
 import type { Mm } from "@odk/geometry";
-import type { CardHolderParams, PatternResult } from "./cardholder.js";
+import type { PatternResult } from "./cardholder.js";
 import { PROVISIONAL_SKIVE_FACTOR } from "./material.js";
 
 /**
@@ -13,6 +13,20 @@ import { PROVISIONAL_SKIVE_FACTOR } from "./material.js";
  * "3 parçayı kes" yazan bir talimatın yanında 5 parça basılıysa
  * kullanıcı hangisine güveneceğini bilemez.
  */
+
+/**
+ * Adım üretimi için gereken asgari parametreler.
+ *
+ * Tam parametre tipi (CardHolderParams / BifoldParams) yerine bu dar
+ * arayüz kullanılıyor: yapısal tipleme sayesinde her iki aile de
+ * doğrudan geçebiliyor ve yeni bir aile eklendiğinde bu dosyaya
+ * dokunmak gerekmiyor.
+ */
+export interface InstructionContext {
+  readonly penAllowance: Mm;
+  readonly stitchMargin: Mm;
+  readonly reveal: Mm;
+}
 
 export interface InstructionStep {
   readonly n: number;
@@ -31,7 +45,7 @@ export const GLUE_CURE_MINUTES = 120;
 
 export function buildInstructions(
   pattern: PatternResult,
-  params: CardHolderParams,
+  params: InstructionContext,
 ): InstructionStep[] {
   const s = pattern.summary;
   const steps: InstructionStep[] = [];

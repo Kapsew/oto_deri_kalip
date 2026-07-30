@@ -1,19 +1,26 @@
 import { useMemo, useState } from "react";
 import type {
+  BifoldParams,
   CardHolderParams,
   CardOrientation,
+  Currency,
   SlotConstruction,
 } from "@odk/patterns";
 import {
+  BANKNOTES,
+  BIFOLD_DEFAULTS,
   CATEGORIES,
   DEFAULT_PARAMS,
   buildInstructions,
   categoryHasAvailable,
   familiesByCategory,
+  generateBifold,
   generateCardHolder,
   stitchSummaryFor,
   STATUS_LABEL,
 } from "./engine.js";
+
+type FamilyId = "card-holder-fold" | "bifold";
 import { PieceView } from "./PieceView.js";
 
 /**
@@ -152,24 +159,36 @@ function Select({ label, value, options, hint, onChange }: SelectProps) {
 }
 
 export default function App() {
+  const [family, setFamily] = useState<FamilyId>("card-holder-fold");
   const [params, setParams] = useState<CardHolderParams>(DEFAULT_PARAMS);
+  const [bifold, setBifold] = useState<BifoldParams>(BIFOLD_DEFAULTS);
   const [print, setPrint] = useState<PrintState>(INITIAL_PRINT);
+
+  const isBifold = family === "bifold";
+  // Talimatlar ve PDF her iki aile için de bu dar bağlamı kullanıyor.
+  const ctx = isBifold ? bifold : params;
 
   const set = <K extends keyof CardHolderParams>(
     key: K,
     value: CardHolderParams[K],
   ) => setParams((p) => ({ ...p, [key]: value }));
 
+  const setB = <K extends keyof BifoldParams>(key: K, value: BifoldParams[K]) =>
+    setBifold((p) => ({ ...p, [key]: value }));
+
   const result = useMemo(() => {
     try {
-      return { ok: true as const, value: generateCardHolder(params) };
+      return {
+        ok: true as const,
+        value: isBifold ? generateBifold(bifold) : generateCardHolder(params),
+      };
     } catch (err) {
       return {
         ok: false as const,
         message: err instanceof Error ? err.message : String(err),
       };
     }
-  }, [params]);
+  }, [isBifold, params, bifold]);
 
   return (
     <div className="shell">
@@ -189,17 +208,30 @@ export default function App() {
             <div className="cat" key={c.id}>
               <span className="cat-name">{c.name}</span>
               <ul className="fam">
-                {familiesByCategory(c.id).map((f) => (
-                  <li
-                    key={f.id}
-                    className="fam-item"
-                    data-status={f.status}
-                    aria-disabled={f.status !== "hazir"}
-                  >
-                    <span>{f.name}</span>
-                    <span className="fam-status">{STATUS_LABEL[f.status]}</span>
-                  </li>
-                ))}
+                {familiesByCategory(c.id).map((f) => {
+                  const usable = f.status === "hazir";
+                  const active = usable && f.id === family;
+                  return (
+                    <li key={f.id}>
+                      <button
+                        type="button"
+                        className="fam-item"
+                        data-status={f.status}
+                        data-active={active}
+                        disabled={!usable}
+                        aria-pressed={active}
+                        onClick={() => {
+                          if (usable) setFamily(f.id as FamilyId);
+                        }}
+                      >
+                        <span>{f.name}</span>
+                        <span className="fam-status">
+                          {STATUS_LABEL[f.status]}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
               {!categoryHasAvailable(c.id) && (
                 <p className="hint">{c.description}</p>
@@ -208,6 +240,123 @@ export default function App() {
           ))}
         </div>
 
+        {isBifold ? (
+          <fieldset className="group" style={{ border: 0, margin: 0, padding: 0 }}>
+            <legend>Bifold</legend>
+            <Slider
+              label="Panel başına yuva"
+              value={bifold.cardSlotsPerSide}
+              min={1}
+              max={6}
+              step={1}
+              onChange={(v) => setB("cardSlotsPerSide", v)}
+            />
+            <Select
+              label="Banknot"
+              value={bifold.currency}
+              options={Object.values(BANKNOTES).map((b) => ({
+                value: b.currency,
+                label: b.label + (b.verified ? "" : " ⚠"),
+              }))}
+              hint="Cüzdanın açık genişliğini en büyük kupür belirler."
+              onChange={(v) => setB("currency", v as Currency)}
+            />
+            <Choice<SlotConstruction>
+              label="Yapım biçimi"
+              value={bifold.construction}
+              options={[
+                { value: "t-slot", label: "T-slot" },
+                { value: "stacked", label: "Düz yığın" },
+              ]}
+              onChange={(v) => setB("construction", v)}
+            />
+            <Slider
+              label="Kademe"
+              value={bifold.reveal}
+              min={5}
+              max={22}
+              step={0.5}
+              unit="mm"
+              onChange={(v) => setB("reveal", v)}
+            />
+            <Slider
+              label="Dış kabuk"
+              value={bifold.outerThickness}
+              min={0.6}
+              max={1.4}
+              step={0.1}
+              unit="mm"
+              onChange={(v) => setB("outerThickness", v)}
+            />
+            <Slider
+              label="İç kabuk"
+              value={bifold.innerThickness}
+              min={0.5}
+              max={1.2}
+              step={0.1}
+              unit="mm"
+              onChange={(v) => setB("innerThickness", v)}
+            />
+            <Slider
+              label="Yuva derisi"
+              value={bifold.slotThickness}
+              min={0.4}
+              max={1.0}
+              step={0.1}
+              unit="mm"
+              onChange={(v) => setB("slotThickness", v)}
+            />
+            <Slider
+              label="Dikiş payı"
+              value={bifold.stitchMargin}
+              min={2.5}
+              max={5}
+              step={0.5}
+              unit="mm"
+              onChange={(v) => setB("stitchMargin", v)}
+            />
+            <Slider
+              label="Köşe yarıçapı"
+              value={bifold.cornerRadius}
+              min={0}
+              max={12}
+              step={0.5}
+              unit="mm"
+              onChange={(v) => setB("cornerRadius", v)}
+            />
+            <Select
+              label="Pricking iron"
+              value={bifold.pitch === undefined ? "auto" : String(bifold.pitch)}
+              options={[
+                { value: "3", label: "3.0 mm" },
+                { value: "3.38", label: "3.38 mm" },
+                { value: "3.85", label: "3.85 mm" },
+                { value: "4", label: "4.0 mm" },
+                { value: "auto", label: "Oto — en az delik" },
+              ]}
+              onChange={(v) =>
+                setBifold((p) => {
+                  if (v === "auto") {
+                    const { pitch: _drop, ...rest } = p;
+                    return rest;
+                  }
+                  return { ...p, pitch: Number(v) };
+                })
+              }
+            />
+            <Choice<string>
+              label="Kalem payı"
+              value={String(bifold.penAllowance)}
+              options={[
+                { value: "0", label: "0" },
+                { value: "0.3", label: "0.3mm" },
+                { value: "0.5", label: "0.5mm" },
+              ]}
+              onChange={(v) => setB("penAllowance", Number(v))}
+            />
+          </fieldset>
+        ) : (
+          <>
         <fieldset className="group" style={{ border: 0, margin: 0, padding: 0 }}>
           <legend>Yuvalar</legend>
           <Slider
@@ -327,6 +476,8 @@ export default function App() {
             onChange={(v) => set("penAllowance", Number(v))}
           />
         </fieldset>
+          </>
+        )}
 
         <fieldset className="group" style={{ border: 0, margin: 0, padding: 0 }}>
           <legend>Baskı</legend>
@@ -400,8 +551,10 @@ export default function App() {
                   downloadPatternPdf(result.value, {
                     printAllHoles: print.printAllHoles,
                     scaleFactor: print.scaleFactor,
-                    title: `Kartlık ${params.cardCount} yuva`,
-                    params,
+                    title: isBifold
+                      ? `Bifold ${bifold.cardSlotsPerSide}+${bifold.cardSlotsPerSide} yuva`
+                      : `Kartlık ${params.cardCount} yuva`,
+                    params: ctx,
                   }),
                 )
                 .catch((err: unknown) => {
@@ -438,7 +591,7 @@ export default function App() {
             </li>
           </ul>
         ) : (
-          <Result value={result.value} params={params} />
+          <Result value={result.value} ctx={ctx} isBifold={isBifold} />
         )}
       </main>
     </div>
@@ -447,10 +600,12 @@ export default function App() {
 
 function Result({
   value,
-  params,
+  ctx,
+  isBifold,
 }: {
   value: ReturnType<typeof generateCardHolder>;
-  params: CardHolderParams;
+  ctx: CardHolderParams | BifoldParams;
+  isBifold: boolean;
 }) {
   const s = value.summary;
   const outer = value.pieces.find((p) => p.id === "outer");
@@ -471,8 +626,11 @@ function Result({
       <div className="stage-head">
         <h2>Parçalar</h2>
         <span className="scale-note">
-          {params.cardCount} yuva · {params.construction === "t-slot" ? "T-slot" : "düz yığın"} ·{" "}
-          {s.pitch}mm adım · {s.totalHoles} delik
+          {isBifold
+            ? `${(ctx as BifoldParams).cardSlotsPerSide}+${(ctx as BifoldParams).cardSlotsPerSide} yuva`
+            : `${(ctx as CardHolderParams).cardCount} yuva`}{" "}
+          · {ctx.construction === "t-slot" ? "T-slot" : "düz yığın"} · {s.pitch}mm
+          adım · {s.totalHoles} delik
         </span>
       </div>
 
@@ -515,7 +673,7 @@ function Result({
       <section className="steps">
         <h3>Yapım adımları</h3>
         <ol>
-          {buildInstructions(value, params).map((step) => (
+          {buildInstructions(value, ctx).map((step) => (
             <li key={step.n}>
               <span className="step-title">{step.title}</span>
               <p>{step.body}</p>

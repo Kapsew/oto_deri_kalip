@@ -16,7 +16,7 @@ import { mmToPt, stitchSummary } from "@odk/geometry";
 import type {
   PatternResult,
   PatternPiece,
-  CardHolderParams,
+  InstructionContext,
   InstructionStep,
 } from "@odk/patterns";
 import { buildInstructions } from "@odk/patterns";
@@ -77,7 +77,7 @@ export interface PdfOptions {
    * Adımlar kalıptan türetildiği için parametrelere ihtiyaç var;
    * PatternResult tek başına yetmiyor.
    */
-  readonly params?: CardHolderParams;
+  readonly params?: InstructionContext;
 }
 
 const BLACK = rgb(0, 0, 0);
