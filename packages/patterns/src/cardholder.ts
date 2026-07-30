@@ -13,7 +13,12 @@ import {
   A4,
 } from "@odk/geometry";
 import type { Temper } from "./material.js";
-import { leather, RECOMMENDED_THICKNESS, MAX_CLOSED_THICKNESS } from "./material.js";
+import {
+  CARD_THICKNESS,
+  MAX_CLOSED_THICKNESS,
+  RECOMMENDED_THICKNESS,
+  leather,
+} from "./material.js";
 import { projectStitchPlan } from "./stitchprojection.js";
 import type { CardOrientation, SlotConstruction } from "./cardslot.js";
 import { cardSlotGeometry, validateCardSlots, T_SLOT_WRAP_ALLOWANCE } from "./cardslot.js";
@@ -163,6 +168,16 @@ function cardH(o: CardOrientation): Mm {
   return o === "horizontal" ? CARD_ID1.height : CARD_ID1.width;
 }
 
+/**
+ * Parça A4'e sığıyor mu — 90° döndürme dahil.
+ * 20mm yazıcı kenar payı düşülüyor.
+ */
+export function fitsOnA4(width: Mm, height: Mm): boolean {
+  const w = A4.width - 20;
+  const h = A4.height - 20;
+  return (width <= w && height <= h) || (height <= w && width <= h);
+}
+
 function rectangle(x: Mm, y: Mm, w: Mm, h: Mm): Polyline {
   return flattenPath(
     path()
@@ -200,6 +215,8 @@ function tSlotShape(width: Mm, height: Mm, mouthHeight: Mm, sideInset: Mm): Poly
 export function generateCardHolder(params: CardHolderParams): PatternResult {
   const diagnostics: Diagnostic[] = [];
 
+  const n = Math.max(0, Math.floor(params.cardCount));
+
   const slotGeo = cardSlotGeometry({
     count: params.cardCount,
     construction: params.construction,
@@ -233,23 +250,34 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
   const closedThickness = slotGeo.centerThickness + 2 * params.outerThickness;
   const loadedThickness = slotGeo.loadedThickness + 2 * params.outerThickness;
 
-  const panelHeight = slotGeo.stackHeight + params.stitchMargin;
-  const innerRadius = naturalInnerRadius(slotGeo.centerThickness);
+  // KAT ARTIK DİKEY (sırt), bifold ile aynı yapı.
+  //
+  // Önceki sürümde kat yataydı ve çevre dikişi KAPALI idi — yani
+  // kartlığın ağzı da dikiliyordu, kart giremezdi. Yatay katta ayrıca
+  // iki ayrı yan dikiş gerekir (tek U olmaz), çünkü kat ortada ve iki
+  // serbest uç ağzı oluşturur.
+  //
+  // Dikey kata geçmek bifold'da doğrulanmış yapıyı aynen kullanmayı
+  // sağlıyor: sırt solda/ortada, ağız üstte, dikiş U şeklinde.
+  const panelWidth = slotGeo.compartmentWidth;
+  const walletHeight = slotGeo.stackHeight + 2 * params.stitchMargin;
+  const foldFill = slotGeo.centerThickness + n * CARD_THICKNESS;
 
   const crossSection: CrossSection = {
     name: "kartlık",
     layers,
     runs: [
-      { id: "front", name: "ön panel", length: panelHeight, layers: ["slots", "outer"] },
-      { id: "back", name: "arka panel", length: panelHeight, layers: ["outer"] },
+      { id: "front", name: "ön panel", length: panelWidth, layers: ["slots", "outer"] },
+      { id: "back", name: "arka panel", length: panelWidth, layers: ["outer"] },
     ],
     folds: [
       {
         id: "spine",
-        name: "kat",
+        name: "sırt",
         angleDeg: 180,
-        innerRadius,
+        innerRadius: naturalInnerRadius(params.outerThickness),
         stack: ["slots", "outer"],
+        gaps: { outer: foldFill },
       },
     ],
   };
@@ -257,43 +285,54 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
   const solved = solveCrossSection(crossSection);
   diagnostics.push(...solved.diagnostics);
 
-  const foldAllowance = foldLengthDelta(
-    slotGeo.centerThickness + params.outerThickness,
-    180,
-  );
+  const outerFlat = layerResult(solved, "outer")?.flatLength ?? 2 * panelWidth;
+
+  // KAT PAYI = kıvrım bölgesinin genişliği, yani düz uzunluğun iki
+  // panelden fazlası.
+  //
+  // Bifold'daki gibi "dış − iç" almak BURADA YANLIŞ: kartlıkta yuva
+  // katmanı yalnızca ön panelden geçiyor, dış kabuk ikisinden de.
+  // Farkı almak bir panel boyunu da içine katıyor ve 121mm gibi saçma
+  // bir sayı üretiyor. Karşılaştırılabilir olmaları için iki katmanın
+  // AYNI düz bölümlerden geçmesi gerekir.
+  const foldAllowance = outerFlat - 2 * panelWidth;
 
   // --- Parçalar ---------------------------------------------------------
-  const W = slotGeo.compartmentWidth;
-  const outerFlat = layerResult(solved, "outer")?.flatLength ?? 2 * panelHeight;
-
+  const W = panelWidth;
   const pieces: PatternPiece[] = [];
 
-  // Dış kabuk: katlanan tek parça, çevre dikişi burada.
-  //
   // KÖŞE SIRASI ÖNEMLİ: yuvarlatma NOMİNAL şekle uygulanır, dikiş
-  // hattına değil. Fiziksel gerçek bu — deri parçanın köşesi yuvarlak
-  // kesilir, dikiş hattı da onu takip eder. Yalnızca dikiş hattını
-  // yuvarlatmak, keskin köşeli bir parçaya yuvarlak dikiş çizmek olurdu.
-  const outerNominal = roundCorners(rectangle(0, 0, W, outerFlat), true, {
-    radius: params.cornerRadius,
-  });
+  // hattına değil. Deri parçanın köşesi yuvarlak kesilir, dikiş hattı
+  // onu takip eder.
+  const outerNominal = roundCorners(
+    rectangle(0, 0, outerFlat, walletHeight),
+    true,
+    { radius: params.cornerRadius },
+  );
   const outerCut = cutLine(outerNominal, { penAllowance: params.penAllowance });
-  const outerStitchRaw = stitchLine(outerCut, params.stitchMargin);
-  // İçe öteleme yuvarlatmayı küçültür ve yarıçap dikiş payından küçükse
-  // köşeyi tekrar keskinleştirir (Adım 5 bulgusu). İkinci geçiş bunu
-  // telafi eder; zaten yumuşak olan noktalara dokunmaz.
-  const outerStitch = roundCorners(outerStitchRaw, true, {
-    radius: Math.max(1, params.cornerRadius - params.stitchMargin),
-  });
+
+  // DİKİŞ U ŞEKLİNDE — ÜST KENAR AÇIK (kart ağzı).
+  const m = params.stitchMargin;
+  const outerStitch = roundCorners(
+    flattenPath(
+      path()
+        .moveTo(vec(m, walletHeight - m))
+        .lineTo(vec(m, m))
+        .lineTo(vec(outerFlat - m, m))
+        .lineTo(vec(outerFlat - m, walletHeight - m))
+        .open(),
+    ),
+    false,
+    { radius: Math.max(1, params.cornerRadius - m) },
+  );
   const outerPlan = distributeStitches(
     outerStitch,
-    true,
+    false,
     params.pitch !== undefined ? { pitch: params.pitch } : {},
   );
   const outerBox = bbox(outerCut);
 
-  // Kat çizgisi: nötr eksen boyunca hesaplanan uzunluğun ortası.
-  const foldY = outerFlat / 2;
+  const foldX = outerFlat / 2;
   pieces.push({
     id: "outer",
     code: "A",
@@ -303,16 +342,17 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
     leatherThickness: params.outerThickness,
     cutLine: outerCut,
     stitchLine: outerStitch,
+    stitchLineClosed: false,
     stitchPlan: outerPlan,
     foldLines: [
       {
-        from: vec(0, foldY - foldAllowance / 2),
-        to: vec(W, foldY - foldAllowance / 2),
+        from: vec(foldX - foldAllowance / 2, 0),
+        to: vec(foldX - foldAllowance / 2, walletHeight),
         label: "kat başlangıcı",
       },
       {
-        from: vec(0, foldY + foldAllowance / 2),
-        to: vec(W, foldY + foldAllowance / 2),
+        from: vec(foldX + foldAllowance / 2, 0),
+        to: vec(foldX + foldAllowance / 2, walletHeight),
         label: "kat bitişi",
       },
     ],
@@ -356,7 +396,6 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
   }
 
   const assembly: AssemblyPlacement[] = [];
-  const n = Math.max(0, Math.floor(params.cardCount));
   for (let i = 0; i < n; i++) {
     const isRect = params.construction === "stacked" || i === 0;
     const code = `${isRect ? "B" : "C"}${i + 1}`;
@@ -397,14 +436,17 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
     });
   }
 
-  const fitsA4 = outerBox.width <= A4.width - 20 && outerBox.height <= A4.height - 20;
+  // A4 KONTROLÜ DÖNDÜRMEYİ HESABA KATIYOR: baskı katmanı sığmayan
+  // parçayı 90° çeviriyor, düz hâle bakıp "bölünecek" demek yanlış
+  // uyarı olurdu.
+  const fitsA4 = fitsOnA4(outerBox.width, outerBox.height);
   if (!fitsA4) {
     diagnostics.push({
       severity: "warning",
       code: "NEEDS_TILING",
       message:
         `Dış kabuk ${outerBox.width.toFixed(0)} × ${outerBox.height.toFixed(0)}mm — ` +
-        `tek A4'e kenar payıyla sığmıyor, birden fazla sayfaya bölünecek.`,
+        `döndürülse bile tek A4'e sığmıyor, birden fazla sayfaya bölünecek.`,
     });
   }
 
@@ -414,7 +456,7 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
     crossSection: solved,
     diagnostics,
     summary: {
-      compartmentWidth: W,
+      compartmentWidth: panelWidth,
       slotStackHeight: slotGeo.stackHeight,
       outerFlatWidth: outerBox.width,
       outerFlatHeight: outerBox.height,
@@ -422,7 +464,7 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
       loadedThickness,
       edgeThickness: slotGeo.edgeThickness,
       foldAllowance,
-      panelHeight,
+      panelHeight: walletHeight,
       totalHoles: outerPlan.totalHoles,
       pitch: outerPlan.pitch,
       fitsA4,

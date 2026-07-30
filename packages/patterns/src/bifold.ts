@@ -23,6 +23,7 @@ import { T_SLOT_WRAP_ALLOWANCE, cardSlotGeometry, validateCardSlots } from "./ca
 import { projectAcrossFold, projectStitchPlan } from "./stitchprojection.js";
 import type { Currency } from "./banknote.js";
 import { billPocketGeometry, validateBillPocket } from "./banknote.js";
+import { fitsOnA4 } from "./cardholder.js";
 import type {
   AssemblyPlacement,
   PatternPiece,
@@ -433,14 +434,14 @@ export function generateBifold(params: BifoldParams): PatternResult {
     });
   }
 
-  const fitsA4 = outerBox.width <= A4.width - 20 && outerBox.height <= A4.height - 20;
+  const fitsA4 = fitsOnA4(outerBox.width, outerBox.height);
   if (!fitsA4) {
     diagnostics.push({
       severity: "warning",
       code: "NEEDS_TILING",
       message:
         `Dış kabuk ${outerBox.width.toFixed(0)} × ${outerBox.height.toFixed(0)}mm — ` +
-        `tek A4'e sığmıyor, birden fazla sayfaya bölünecek.`,
+        `döndürülse bile tek A4'e sığmıyor, birden fazla sayfaya bölünecek.`,
     });
   }
 

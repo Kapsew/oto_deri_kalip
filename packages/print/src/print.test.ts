@@ -275,7 +275,7 @@ describe("PDF üretimi", () => {
     expect(pattern.assembly[0]?.pieceId).toBe(rects[0]?.id);
   });
 
-  it("en üstteki yuvanın üstü panel yüksekliğine TAM denk geliyor", () => {
+  it("en üstteki yuvanın üstü, ağız payı kadar altta kalıyor", () => {
     // Kademe dizilimi paneli tam doldurmalı: (n−1)·kademe + kart
     // yüksekliği + dikiş payı = panelHeight.
     //
@@ -287,8 +287,11 @@ describe("PDF üretimi", () => {
     const slotPiece = pattern.pieces.find((p) => p.id === top?.pieceId);
     const nominalHeight =
       (slotPiece?.height as number) + 2 * DEFAULT_PARAMS.penAllowance;
+    // Dikey kata geçtikten sonra cüzdan yüksekliği yığından bir dikiş
+    // payı FAZLA: kart ağzı üst kenarın altında kalmalı, yoksa kartlar
+    // dışarı görünür ve açık kenardan kayar.
     expect((top?.y as number) + nominalHeight).toBeCloseTo(
-      pattern.summary.panelHeight,
+      pattern.summary.panelHeight - DEFAULT_PARAMS.stitchMargin,
       6,
     );
   });
