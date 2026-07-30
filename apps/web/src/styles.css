@@ -34,7 +34,11 @@
   --warn: #d9973f;
   --error: #d9634f;
 
-  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  /* JetBrains Mono: PDF katmanıyla aynı font. IBM Plex Mono
+     @pdf-lib/fontkit ile boşluk karakterinde patlıyor (bkz.
+     packages/print/src/print.test.ts), ekran ve baskı ayrışmasın diye
+     ikisi de buna geçti. */
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
   --sans: "IBM Plex Sans Condensed", system-ui, -apple-system, sans-serif;
 
   --rail: 320px;
@@ -404,4 +408,72 @@ input[type="range"]:focus-visible {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* ── Baskı paneli ──────────────────────────────────────────────────── */
+
+.calibrate {
+  display: flex;
+  gap: 6px;
+}
+
+.calibrate input {
+  flex: 1;
+  min-width: 0;
+  background: var(--mat-deep);
+  border: 1px solid var(--panel-edge);
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 6px 8px;
+}
+
+.calibrate input:focus-visible,
+.calibrate button:focus-visible,
+button.primary:focus-visible {
+  outline: 2px solid var(--chalk);
+  outline-offset: 2px;
+}
+
+.calibrate button {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  color: var(--bone-dim);
+  font-family: var(--sans);
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.calibrate button:hover {
+  border-color: var(--brass-dim);
+  color: var(--bone);
+}
+
+button.primary {
+  width: 100%;
+  margin-top: 4px;
+  background: var(--brass);
+  color: var(--mat-deep);
+  border: none;
+  padding: 11px;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+button.primary:disabled {
+  background: var(--panel-edge);
+  color: var(--bone-faint);
+  cursor: not-allowed;
+}
+
+.hint[data-tone="ok"] {
+  color: var(--chalk);
+}
+
+.hint[data-tone="bad"] {
+  color: var(--error);
 }

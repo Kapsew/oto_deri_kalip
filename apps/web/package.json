@@ -13,7 +13,10 @@
     "@odk/geometry": "workspace:*",
     "@odk/patterns": "workspace:*",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "@odk/print": "workspace:*",
+    "@expo-google-fonts/ibm-plex-sans": "^0.4.1",
+    "@expo-google-fonts/jetbrains-mono": "^0.4.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

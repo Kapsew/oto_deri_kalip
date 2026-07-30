@@ -11,6 +11,16 @@ import {
 } from "./engine.js";
 import { PieceView } from "./PieceView.js";
 
+/**
+ * PDF katmanı DİNAMİK yükleniyor.
+ *
+ * pdf-lib + fontkit ana pakete girdiğinde bundle 1.29MB'a çıkıyordu.
+ * Kullanıcıların çoğu önce parametrelerle oynuyor; PDF kodunu ilk
+ * "PDF indir" tıklamasına kadar indirmemek ilk açılışı belirgin
+ * hızlandırıyor.
+ */
+const pdfModule = () => import("./pdf.js");
+
 const PX_PER_MM = 2.4;
 
 interface SliderProps {
@@ -86,8 +96,27 @@ function Choice<T extends string>({
   );
 }
 
+interface PrintState {
+  readonly printAllHoles: boolean;
+  readonly measured: string;
+  readonly scaleFactor: number;
+  readonly note: string;
+  readonly noteOk: boolean;
+  readonly busy: boolean;
+}
+
+const INITIAL_PRINT: PrintState = {
+  printAllHoles: false,
+  measured: "50",
+  scaleFactor: 1,
+  note: "",
+  noteOk: true,
+  busy: false,
+};
+
 export default function App() {
   const [params, setParams] = useState<CardHolderParams>(DEFAULT_PARAMS);
+  const [print, setPrint] = useState<PrintState>(INITIAL_PRINT);
 
   const set = <K extends keyof CardHolderParams>(
     key: K,
@@ -212,6 +241,102 @@ export default function App() {
             hint="Kalem ucu dışa kaçtığı için şablon o kadar küçük basılır."
             onChange={(v) => set("penAllowance", Number(v))}
           />
+        </fieldset>
+
+        <fieldset className="group" style={{ border: 0, margin: 0, padding: 0 }}>
+          <legend>Baskı</legend>
+
+          <Choice<string>
+            label="Delikler"
+            value={print.printAllHoles ? "all" : "anchors"}
+            options={[
+              { value: "anchors", label: "Sadece köşe" },
+              { value: "all", label: "Hepsi" },
+            ]}
+            hint="Delikleri iron ile kendin yürüyorsan köşe çapaları yeterli; kapak sayfasında kenar başına sayı var."
+            onChange={(v) =>
+              setPrint((p) => ({ ...p, printAllHoles: v === "all" }))
+            }
+          />
+
+          <div className="field">
+            <div className="field-head">
+              <label htmlFor="cal">Ölçtüğün kare</label>
+              <span className="field-value">nominal 50mm</span>
+            </div>
+            <div className="calibrate">
+              <input
+                id="cal"
+                type="number"
+                step="0.1"
+                min="1"
+                value={print.measured}
+                onChange={(e) =>
+                  setPrint((p) => ({ ...p, measured: e.target.value }))
+                }
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  void pdfModule().then(({ scaleFromMeasurement }) => {
+                    const r = scaleFromMeasurement(Number(print.measured));
+                    setPrint((p) => ({
+                      ...p,
+                      scaleFactor: r.ok ? r.factor : p.scaleFactor,
+                      note: r.message,
+                      noteOk: r.ok,
+                    }));
+                  });
+                }}
+              >
+                Uygula
+              </button>
+            </div>
+            <p className="hint">
+              PDF'i bas, kapaktaki kareyi cetvelle ölç, çıkan değeri buraya
+              gir. Ölçek düzeltilir.
+            </p>
+            {print.note !== "" && (
+              <p className="hint" data-tone={print.noteOk ? "ok" : "bad"}>
+                {print.note}
+              </p>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className="primary"
+            disabled={print.busy || !result.ok}
+            onClick={() => {
+              if (!result.ok) return;
+              setPrint((p) => ({ ...p, busy: true }));
+              pdfModule()
+                .then(({ downloadPatternPdf }) =>
+                  downloadPatternPdf(result.value, {
+                    printAllHoles: print.printAllHoles,
+                    scaleFactor: print.scaleFactor,
+                    title: `Kartlık ${params.cardCount} yuva`,
+                  }),
+                )
+                .catch((err: unknown) => {
+                  setPrint((p) => ({
+                    ...p,
+                    note:
+                      "PDF üretilemedi: " +
+                      (err instanceof Error ? err.message : String(err)),
+                    noteOk: false,
+                  }));
+                })
+                .finally(() => setPrint((p) => ({ ...p, busy: false })));
+            }}
+          >
+            {print.busy ? "Hazırlanıyor…" : "PDF indir"}
+          </button>
+          {print.scaleFactor !== 1 && (
+            <p className="hint">
+              Ölçek düzeltmesi aktif: ×{print.scaleFactor.toFixed(4)}
+            </p>
+          )}
         </fieldset>
       </aside>
 

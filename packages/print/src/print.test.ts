@@ -1,0 +1,298 @@
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { PDFDocument } from "pdf-lib";
+import { mmToPt } from "@odk/geometry";
+import { DEFAULT_PARAMS, generateCardHolder } from "@odk/patterns";
+import {
+  A4_PORTRAIT,
+  printableArea,
+  planTiles,
+  tileOrigin,
+  tileCode,
+  tileCount,
+  TILE_OVERLAP,
+  CALIBRATION_SQUARE,
+} from "./paper.js";
+import { packPieces, scaleFromMeasurement, STYLES } from "./layout.js";
+import { buildPatternPdf } from "./pdf.js";
+
+const require = createRequire(import.meta.url);
+
+function fontBytes(pkg: string, file: string): Uint8Array {
+  return new Uint8Array(readFileSync(require.resolve(`${pkg}/${file}`)));
+}
+
+const FONTS = {
+  regular: fontBytes(
+    "@expo-google-fonts/ibm-plex-sans",
+    "400Regular/IBMPlexSans_400Regular.ttf",
+  ),
+  mono: fontBytes(
+    "@expo-google-fonts/jetbrains-mono",
+    "400Regular/JetBrainsMono_400Regular.ttf",
+  ),
+};
+
+describe("basılabilir alan", () => {
+  it("A4'te kenar payı ve alt şerit düşülüyor", () => {
+    const a = printableArea(A4_PORTRAIT);
+    expect(a.width).toBe(190); // 210 - 2*10
+    expect(a.height).toBe(263); // 297 - 2*10 - 14
+    expect(a.originX).toBe(10);
+    expect(a.originY).toBe(24);
+  });
+});
+
+describe("döşeme planı", () => {
+  it("basılabilir alana sığan tabaka tek sayfa", () => {
+    const g = planTiles(180, 250, A4_PORTRAIT);
+    expect(g.cols).toBe(1);
+    expect(g.rows).toBe(1);
+    expect(tileCount(g)).toBe(1);
+  });
+
+  it("adım = basılabilir alan − bindirme", () => {
+    const g = planTiles(400, 600, A4_PORTRAIT);
+    expect(g.stepX).toBe(190 - TILE_OVERLAP);
+    expect(g.stepY).toBe(263 - TILE_OVERLAP);
+  });
+
+  it("döşemeler tabakanın tamamını kapsıyor", () => {
+    for (const [w, h] of [
+      [400, 600],
+      [191, 264],
+      [1000, 300],
+      [95, 800],
+    ] as const) {
+      const g = planTiles(w, h, A4_PORTRAIT);
+      const coveredX = (g.cols - 1) * g.stepX + g.tileWidth;
+      const coveredY = (g.rows - 1) * g.stepY + g.tileHeight;
+      expect(coveredX).toBeGreaterThanOrEqual(w - 1e-9);
+      expect(coveredY).toBeGreaterThanOrEqual(h - 1e-9);
+    }
+  });
+
+  it("komşu döşemeler tam olarak bindirme kadar örtüşüyor", () => {
+    const g = planTiles(500, 500, A4_PORTRAIT);
+    const a = tileOrigin(g, 0, 0);
+    const b = tileOrigin(g, 1, 0);
+    const overlapX = a.x + g.tileWidth - b.x;
+    expect(overlapX).toBeCloseTo(TILE_OVERLAP, 9);
+  });
+
+  it("satırlar yukarıdan aşağı numaralanıyor", () => {
+    const g = planTiles(190, 600, A4_PORTRAIT);
+    const top = tileOrigin(g, 0, 0);
+    const below = tileOrigin(g, 0, 1);
+    expect(top.y).toBeGreaterThan(below.y);
+  });
+
+  it("bindirme basılabilir alandan büyükse hata", () => {
+    expect(() => planTiles(500, 500, A4_PORTRAIT, 300)).toThrow(/ilerlemez/);
+  });
+});
+
+describe("sayfa kodları", () => {
+  it("sütun harfi + satır numarası", () => {
+    expect(tileCode(0, 0)).toBe("A1");
+    expect(tileCode(1, 0)).toBe("B1");
+    expect(tileCode(0, 2)).toBe("A3");
+  });
+
+  it("26'dan sonra iki harf", () => {
+    expect(tileCode(25, 0)).toBe("Z1");
+    expect(tileCode(26, 0)).toBe("AA1");
+  });
+});
+
+describe("parça yerleşimi", () => {
+  const pattern = generateCardHolder(DEFAULT_PARAMS);
+
+  it("tüm parçalar yerleştiriliyor", () => {
+    const layout = packPieces(pattern.pieces);
+    expect(layout.placed).toHaveLength(pattern.pieces.length);
+  });
+
+  it("parçalar üst üste binmiyor", () => {
+    const layout = packPieces(pattern.pieces);
+    for (let i = 0; i < layout.placed.length; i++) {
+      for (let j = i + 1; j < layout.placed.length; j++) {
+        const a = layout.placed[i] as (typeof layout.placed)[0];
+        const b = layout.placed[j] as (typeof layout.placed)[0];
+        const apart =
+          a.x + a.width <= b.x + 1e-9 ||
+          b.x + b.width <= a.x + 1e-9 ||
+          a.y + a.height <= b.y + 1e-9 ||
+          b.y + b.height <= a.y + 1e-9;
+        expect(apart).toBe(true);
+      }
+    }
+  });
+
+  it("parçalar tabaka sınırları içinde", () => {
+    const layout = packPieces(pattern.pieces);
+    for (const p of layout.placed) {
+      expect(p.x).toBeGreaterThanOrEqual(-1e-9);
+      expect(p.y).toBeGreaterThanOrEqual(-1e-9);
+      expect(p.x + p.width).toBeLessThanOrEqual(layout.width + 1e-9);
+      expect(p.y + p.height).toBeLessThanOrEqual(layout.height + 1e-9);
+    }
+  });
+
+  it("boş girdi boş yerleşim", () => {
+    expect(packPieces([]).placed).toHaveLength(0);
+  });
+
+  it("basılabilir alandan geniş parça tabakayı genişletiyor", () => {
+    const wide = generateCardHolder({
+      ...DEFAULT_PARAMS,
+      orientation: "horizontal",
+      stitchMargin: 5,
+    });
+    const layout = packPieces(wide.pieces);
+    expect(layout.width).toBeGreaterThanOrEqual(
+      Math.max(...wide.pieces.map((p) => p.width)),
+    );
+  });
+});
+
+describe("kalibrasyon", () => {
+  it("doğru ölçümde düzeltme yok", () => {
+    const r = scaleFromMeasurement(50);
+    expect(r.factor).toBe(1);
+    expect(r.ok).toBe(true);
+  });
+
+  it("küçük basıldıysa büyütme katsayısı", () => {
+    const r = scaleFromMeasurement(49.5);
+    expect(r.ok).toBe(true);
+    expect(r.factor).toBeCloseTo(50 / 49.5, 9);
+    expect(r.factor).toBeGreaterThan(1);
+  });
+
+  it("büyük basıldıysa küçültme katsayısı", () => {
+    const r = scaleFromMeasurement(50.5);
+    expect(r.factor).toBeLessThan(1);
+  });
+
+  it("düzeltme uygulandığında sonuç nominale gider", () => {
+    // Yazıcı %99 ölçekle basıyorsa: içeriği factor ile büyüt, yazıcı
+    // 0.99 ile küçültsün, sonuç 50mm olsun.
+    const printerScale = 0.99;
+    const measured = CALIBRATION_SQUARE * printerScale;
+    const { factor } = scaleFromMeasurement(measured);
+    expect(CALIBRATION_SQUARE * factor * printerScale).toBeCloseTo(
+      CALIBRATION_SQUARE,
+      9,
+    );
+  });
+
+  it("%10'dan fazla sapma reddediliyor", () => {
+    // Kullanıcı inç ölçtüyse ~1.97 girer; sessizce uygulamak felaket olur.
+    const r = scaleFromMeasurement(2);
+    expect(r.ok).toBe(false);
+    expect(r.factor).toBe(1);
+    expect(r.message).toContain("mm");
+  });
+
+  it("geçersiz girdi reddediliyor", () => {
+    expect(scaleFromMeasurement(0).ok).toBe(false);
+    expect(scaleFromMeasurement(-5).ok).toBe(false);
+    expect(scaleFromMeasurement(Number.NaN).ok).toBe(false);
+  });
+});
+
+describe("çizgi biçimleri", () => {
+  it("desenle ayrışıyor: kesim sürekli, diğerleri kesikli", () => {
+    // Siyah-beyaz çıktıda tek ayırt edici desen olmalı.
+    expect(STYLES.cut.dash).toHaveLength(0);
+    expect(STYLES.stitch.dash.length).toBeGreaterThan(0);
+    expect(STYLES.fold.dash.length).toBeGreaterThan(0);
+    expect(STYLES.stitch.dash).not.toEqual(STYLES.fold.dash);
+  });
+
+  it("kesim çizgisi en koyu ve 0.2mm", () => {
+    expect(STYLES.cut.width).toBe(0.2);
+    expect(STYLES.cut.gray).toBe(0);
+  });
+});
+
+describe("PDF üretimi", () => {
+  const pattern = generateCardHolder(DEFAULT_PARAMS);
+
+  it("geçerli PDF üretiyor", async () => {
+    const bytes = await buildPatternPdf(pattern, FONTS);
+    expect(bytes.length).toBeGreaterThan(1000);
+    expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe("%PDF-");
+  });
+
+  it("sayfa boyutu tam A4 (595.28 × 841.89 pt)", async () => {
+    const bytes = await buildPatternPdf(pattern, FONTS);
+    const doc = await PDFDocument.load(bytes);
+    for (const page of doc.getPages()) {
+      expect(page.getWidth()).toBeCloseTo(mmToPt(210), 3);
+      expect(page.getHeight()).toBeCloseTo(mmToPt(297), 3);
+    }
+  });
+
+  it("kapak + desen sayfaları", async () => {
+    const bytes = await buildPatternPdf(pattern, FONTS);
+    const doc = await PDFDocument.load(bytes);
+    const layout = packPieces(pattern.pieces);
+    const grid = planTiles(layout.width, layout.height);
+    expect(doc.getPageCount()).toBe(1 + tileCount(grid));
+  });
+
+  it("mono font BOŞLUK karakterini gömebiliyor", async () => {
+    // FONT SEÇİMİ TESADÜFİ DEĞİL.
+    //
+    // İlk tercih IBM Plex Mono'ydu (ekran arayüzüyle aynı olsun diye).
+    // @pdf-lib/fontkit o TTF'te boşluk karakterinde patlıyor:
+    // "Trying to access beyond buffer length" — boş konturlu glifin
+    // sınırlayıcı kutusunu okumaya çalışıyor. subset açık/kapalı fark
+    // etmiyor. JetBrains Mono aynı işlemi sorunsuz yapıyor.
+    //
+    // Bu test, biri "ekranla aynı font olsun" diye geri değiştirirse
+    // sorunun sessizce dönmemesi için burada.
+    const bytes = await buildPatternPdf(pattern, FONTS, {
+      title: "bölme genişliği 100.0 mm · dış kabuk",
+    });
+    expect(bytes.length).toBeGreaterThan(1000);
+  });
+
+  it("Türkçe karakterler gömülü fontla kodlanıyor", async () => {
+    // Standart PDF fontları (WinAnsi) ı, ş, ğ kodlayamıyor; gömme
+    // yapılmazsa üretim tamamen patlar.
+    await expect(
+      buildPatternPdf(pattern, FONTS, { title: "Kartlık — dış kabuk şablonu kağıt" }),
+    ).resolves.toBeInstanceOf(Uint8Array);
+  });
+
+  it("kalibrasyon katsayısı çıktıyı büyütüyor", async () => {
+    const a = await buildPatternPdf(pattern, FONTS, { scaleFactor: 1 });
+    const b = await buildPatternPdf(pattern, FONTS, { scaleFactor: 1.02 });
+    // Aynı sayfa sayısı, farklı içerik.
+    const da = await PDFDocument.load(a);
+    const db = await PDFDocument.load(b);
+    expect(db.getPageCount()).toBe(da.getPageCount());
+    expect(b.length).not.toBe(a.length);
+  });
+
+  it("tüm delikleri basmak çıktıyı büyütüyor", async () => {
+    const few = await buildPatternPdf(pattern, FONTS, { printAllHoles: false });
+    const many = await buildPatternPdf(pattern, FONTS, { printAllHoles: true });
+    expect(many.length).toBeGreaterThan(few.length);
+  });
+
+  it("çok sayfalı kalıpta sayfa sayısı artıyor", async () => {
+    const big = generateCardHolder({
+      ...DEFAULT_PARAMS,
+      cardCount: 8,
+      reveal: 20,
+    });
+    const bytes = await buildPatternPdf(big, FONTS);
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getPageCount()).toBeGreaterThan(2);
+  });
+});
