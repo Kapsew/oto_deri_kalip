@@ -29,8 +29,14 @@ import {
   tileCode,
   CALIBRATION_SQUARE,
 } from "./paper.js";
-import type { LineStyle, PlacedPiece, SheetLayout } from "./layout.js";
-import { packPieces, STYLES } from "./layout.js";
+import type {
+  LayoutPage,
+  LineStyle,
+  PageLayout,
+  PlacedPiece,
+  SheetLayout,
+} from "./layout.js";
+import { packPages, packPieces, pieceToLayout, STYLES } from "./layout.js";
 
 /**
  * PDF ÜRETİCİ
@@ -78,6 +84,15 @@ export interface PdfOptions {
    * PatternResult tek başına yetmiyor.
    */
   readonly params?: InstructionContext;
+  /**
+   * Sayfaya sığmayan parçayı 90° döndürmeye izin ver.
+   *
+   * Varsayılan AÇIK. Kapatmak yalnızca deri postu belirli bir yönde
+   * kesmek zorunda olan (damar kısıtı sıkı) kullanıcılar için anlamlı;
+   * kapatıldığında büyük parçalar döşemeye düşer ve elle hizalama
+   * gerekir.
+   */
+  readonly allowRotation?: boolean;
 }
 
 const BLACK = rgb(0, 0, 0);
@@ -112,18 +127,40 @@ export async function buildPatternPdf(
 
   const ctx: Ctx = { doc, body, mono, paper, scale };
 
-  const layout = packPieces(pattern.pieces, paper);
-  const grid = planTiles(layout.width, layout.height, paper);
+  // ÖNCE sayfa bazlı yerleştirme denenir; yalnızca sığmayan parçalar
+  // döşemeye kalır. Bkz. layout.ts — hizalama hatası ürünün ölçüsüne
+  // doğrudan giriyor.
+  const pageLayout = packPages(
+    pattern.pieces,
+    paper,
+    undefined,
+    options.allowRotation ?? true,
+  );
+  const needsTiling = pageLayout.oversized.length > 0;
+  const tiledSheet = needsTiling ? packPieces(pageLayout.oversized, paper) : undefined;
+  const grid =
+    tiledSheet === undefined
+      ? undefined
+      : planTiles(tiledSheet.width, tiledSheet.height, paper);
 
-  drawCoverPage(ctx, pattern, layout, grid, options);
+  const patternPageCount =
+    pageLayout.pages.length + (grid === undefined ? 0 : grid.cols * grid.rows);
+
+  drawCoverPage(ctx, pattern, pageLayout, patternPageCount, options);
   drawAssemblyPage(ctx, pattern);
   if (options.params !== undefined) {
     drawInstructionPages(ctx, buildInstructions(pattern, options.params));
   }
 
-  for (let row = 0; row < grid.rows; row++) {
-    for (let col = 0; col < grid.cols; col++) {
-      drawTilePage(ctx, pattern, layout, grid, col, row, options);
+  for (const page of pageLayout.pages) {
+    drawFlatPage(ctx, page, patternPageCount, options);
+  }
+
+  if (tiledSheet !== undefined && grid !== undefined) {
+    for (let row = 0; row < grid.rows; row++) {
+      for (let col = 0; col < grid.cols; col++) {
+        drawTilePage(ctx, tiledSheet, grid, col, row, options);
+      }
     }
   }
 
@@ -196,8 +233,8 @@ function text(
 function drawCoverPage(
   ctx: Ctx,
   pattern: PatternResult,
-  layout: SheetLayout,
-  grid: TileGrid,
+  pageLayout: PageLayout,
+  patternPageCount: number,
   options: PdfOptions,
 ): void {
   const page = addPage(ctx);
@@ -209,7 +246,7 @@ function drawCoverPage(
   y -= 7;
   text(
     page,
-    `${options.version ?? "v1"} · ${grid.cols * grid.rows} desen sayfası · ölçek 1:1`,
+    `${options.version ?? "v1"} · ${patternPageCount} desen sayfası · ölçek 1:1`,
     left,
     y,
     9,
@@ -249,9 +286,52 @@ function drawCoverPage(
   }
   text(page, `${CALIBRATION_SQUARE} mm`, left + sq + 4, y + sq / 2, 10, ctx.mono);
 
-  // ── Kesim kuralı ─────────────────────────────────────────────────────
+  // ── Sayfa yerleşimi bilgisi ──────────────────────────────────────────
   y -= 10;
-  text(page, "2 — Çizginin dışından kes", left, y, 12, ctx.body);
+  const tiled = pageLayout.oversized.length > 0;
+  text(page, "2 — Sayfa yerleşimi", left, y, 12, ctx.body);
+  y -= 5.5;
+  if (!tiled) {
+    text(
+      page,
+      "Her parça tek bir sayfada. Sayfa birleştirme ve hizalama GEREKMİYOR.",
+      left,
+      y,
+      9,
+      ctx.body,
+      0.25,
+    );
+    y -= 4.6;
+    if (pageLayout.rotatedCount > 0) {
+      text(
+        page,
+        `${pageLayout.rotatedCount} parça sayfaya sığması için 90° döndürüldü. ` +
+          `Damar oku parçayla birlikte döndü; oku takip et.`,
+        left,
+        y,
+        9,
+        ctx.body,
+        0.25,
+      );
+      y -= 4.6;
+    }
+  } else {
+    text(
+      page,
+      `${pageLayout.oversized.map((op) => op.code).join(", ")} tek sayfaya sığmıyor ` +
+        `ve bölündü. O sayfaları kesme çizgisinden kesip haçları çakıştırarak yapıştır.`,
+      left,
+      y,
+      9,
+      ctx.body,
+      0.25,
+    );
+    y -= 4.6;
+  }
+
+  // ── Kesim kuralı ─────────────────────────────────────────────────────
+  y -= 5;
+  text(page, "3 — Çizginin dışından kes", left, y, 12, ctx.body);
   y -= 5.5;
   text(
     page,
@@ -265,7 +345,7 @@ function drawCoverPage(
 
   // ── Parça listesi ────────────────────────────────────────────────────
   y -= 12;
-  text(page, "3 — Parçalar", left, y, 12, ctx.body);
+  text(page, "4 — Parçalar", left, y, 12, ctx.body);
   y -= 6;
   text(page, "kod", left, y, 8, ctx.mono, 0.5);
   text(page, "parça", left + 12, y, 8, ctx.mono, 0.5);
@@ -296,7 +376,7 @@ function drawCoverPage(
   const outer = pattern.pieces.find((p) => p.stitchPlan !== undefined);
   if (outer?.stitchPlan !== undefined) {
     y -= 8;
-    text(page, "4 — Dikiş", left, y, 12, ctx.body);
+    text(page, "5 — Dikiş", left, y, 12, ctx.body);
     y -= 5.5;
     text(
       page,
@@ -317,7 +397,7 @@ function drawCoverPage(
   // ── Ölçüler ──────────────────────────────────────────────────────────
   const s = pattern.summary;
   y -= 8;
-  text(page, "5 — Ölçüler", left, y, 12, ctx.body);
+  text(page, "6 — Ölçüler", left, y, 12, ctx.body);
   y -= 5.5;
   const rows: [string, string][] = [
     ["bölme genişliği", `${s.compartmentWidth.toFixed(1)} mm`],
@@ -591,9 +671,32 @@ function drawInstructionPages(ctx: Ctx, steps: readonly InstructionStep[]): void
 
 // --- Desen sayfaları -------------------------------------------------------
 
+/**
+ * Döşemesiz desen sayfası: parçalar bütün hâlde, hizalama gerekmez.
+ */
+function drawFlatPage(
+  ctx: Ctx,
+  layoutPage: LayoutPage,
+  totalPages: number,
+  options: PdfOptions,
+): void {
+  const page = addPage(ctx);
+  const area = printableArea(ctx.paper);
+
+  const tx = (p: Vec): Vec => ({
+    x: area.originX + p.x * ctx.scale,
+    y: area.originY + p.y * ctx.scale,
+  });
+
+  for (const placed of layoutPage.placed) {
+    drawPiece(ctx, page, placed, tx, options.printAllHoles ?? true);
+  }
+
+  drawFooter(ctx, page, `S${layoutPage.index + 1}`, totalPages);
+}
+
 function drawTilePage(
   ctx: Ctx,
-  pattern: PatternResult,
   layout: SheetLayout,
   grid: TileGrid,
   col: number,
@@ -641,11 +744,11 @@ function drawPiece(
 ): void {
   const piece = placed.piece;
 
-  // Parçanın kendi koordinatları sıfırlanıp tabakadaki yerine taşınıyor.
+  // Parça yerel koordinatı -> yerleşim -> sayfa. Döndürme pieceToLayout
+  // içinde, tek yerde uygulanıyor.
   const minX = Math.min(...piece.cutLine.map((p) => p.x));
   const minY = Math.min(...piece.cutLine.map((p) => p.y));
-  const place = (p: Vec): Vec =>
-    tx({ x: placed.x + (p.x - minX), y: placed.y + (p.y - minY) });
+  const place = (p: Vec): Vec => tx(pieceToLayout(placed, p, minX, minY));
 
   polyline(page, piece.cutLine.map(place), true, STYLES.cut, ctx.scale);
 
@@ -673,11 +776,9 @@ function drawPiece(
     }
   }
 
-  // Etiket: parçanın sol-üst köşesinin biraz üstünde.
-  const label = tx({
-    x: placed.x,
-    y: placed.y + placed.height + 3,
-  });
+  // Etiket: parçanın sol-üst köşesinin biraz üstünde. Etiket YATAY
+  // kalır — parça dönse de yazının dönmesi okunabilirliği bozar.
+  const label = tx({ x: placed.x, y: placed.y + placed.height + 3 });
   text(
     page,
     `${piece.code} · ${piece.name}  ×${piece.quantity}  ${piece.width.toFixed(1)}×${piece.height.toFixed(1)}mm  ${piece.leatherThickness.toFixed(1)}mm deri`,
@@ -690,10 +791,15 @@ function drawPiece(
 
   // Damar yönü: deri postun boyuna göre daha az esner; parçalar aynı
   // yönde kesilmezse ürün çarpılır.
-  const grainStart = tx({ x: placed.x + 2, y: placed.y + 2 });
-  const grainEnd = tx({ x: placed.x + 2, y: placed.y + 14 });
+  //
+  // Ok PARÇA YEREL koordinatında tanımlanıp aynı dönüşümden geçiyor;
+  // böylece parça döndürüldüğünde ok da dönüyor ve deri üzerindeki
+  // doğru yönü göstermeye devam ediyor. Sayfa koordinatında sabit bir
+  // ok çizmek, döndürülmüş parçada yanlış yön gösterirdi.
+  const grainStart = place({ x: minX + 3, y: minY + 3 });
+  const grainEnd = place({ x: minX + 3, y: minY + 15 });
   line(page, grainStart, grainEnd, STYLES.guide, ctx.scale);
-  text(page, "damar", grainStart.x + 1.5, grainStart.y + 4, 6, ctx.mono, 0.55);
+  text(page, "damar", grainStart.x + 1.5, grainStart.y + 1, 6, ctx.mono, 0.55);
 }
 
 /**

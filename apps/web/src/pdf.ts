@@ -27,6 +27,7 @@ export interface DownloadOptions {
   readonly printAllHoles: boolean;
   readonly scaleFactor: number;
   readonly title: string;
+  readonly allowRotation: boolean;
   /** Yapım adımları sayfası için gerekli. */
   readonly params: InstructionContext;
 }
@@ -38,6 +39,7 @@ export async function downloadPatternPdf(
   const fonts = await loadFonts();
   const bytes = await buildPatternPdf(pattern, fonts, {
     printAllHoles: options.printAllHoles,
+    allowRotation: options.allowRotation,
     scaleFactor: options.scaleFactor,
     title: options.title,
     version: new Date().toISOString().slice(0, 10),

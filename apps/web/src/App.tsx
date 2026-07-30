@@ -110,6 +110,7 @@ function Choice<T extends string>({
 
 interface PrintState {
   readonly printAllHoles: boolean;
+  readonly allowRotation: boolean;
   readonly measured: string;
   readonly scaleFactor: number;
   readonly note: string;
@@ -119,6 +120,7 @@ interface PrintState {
 
 const INITIAL_PRINT: PrintState = {
   printAllHoles: true,
+  allowRotation: true,
   measured: "50",
   scaleFactor: 1,
   note: "",
@@ -495,6 +497,19 @@ export default function App() {
             }
           />
 
+          <Choice<string>
+            label="Sayfaya sığdırma"
+            value={print.allowRotation ? "rotate" : "tile"}
+            options={[
+              { value: "rotate", label: "Döndür" },
+              { value: "tile", label: "Böl" },
+            ]}
+            hint="Döndür: parça 90° çevrilip tek sayfaya sığar, hizalama gerekmez. Böl: parça sayfalara bölünür, kesip yapıştırman gerekir."
+            onChange={(v) =>
+              setPrint((p) => ({ ...p, allowRotation: v === "rotate" }))
+            }
+          />
+
           <div className="field">
             <div className="field-head">
               <label htmlFor="cal">Ölçtüğün kare</label>
@@ -550,6 +565,7 @@ export default function App() {
                 .then(({ downloadPatternPdf }) =>
                   downloadPatternPdf(result.value, {
                     printAllHoles: print.printAllHoles,
+                    allowRotation: print.allowRotation,
                     scaleFactor: print.scaleFactor,
                     title: isBifold
                       ? `Bifold ${bifold.cardSlotsPerSide}+${bifold.cardSlotsPerSide} yuva`

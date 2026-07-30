@@ -4,7 +4,13 @@ import { createRequire } from "node:module";
 import { PDFDocument } from "pdf-lib";
 import { mmToPt } from "@odk/geometry";
 import type { CardHolderParams } from "@odk/patterns";
-import { DEFAULT_PARAMS, generateCardHolder, buildInstructions } from "@odk/patterns";
+import {
+  BIFOLD_DEFAULTS,
+  DEFAULT_PARAMS,
+  buildInstructions,
+  generateBifold,
+  generateCardHolder,
+} from "@odk/patterns";
 import {
   A4_PORTRAIT,
   printableArea,
@@ -15,7 +21,13 @@ import {
   TILE_OVERLAP,
   CALIBRATION_SQUARE,
 } from "./paper.js";
-import { packPieces, scaleFromMeasurement, STYLES } from "./layout.js";
+import {
+  packPages,
+  packPieces,
+  pieceToLayout,
+  scaleFromMeasurement,
+  STYLES,
+} from "./layout.js";
 import { buildPatternPdf } from "./pdf.js";
 
 const require = createRequire(import.meta.url);
@@ -370,5 +382,97 @@ describe("PDF üretimi", () => {
     const bytes = await buildPatternPdf(big, FONTS);
     const doc = await PDFDocument.load(bytes);
     expect(doc.getPageCount()).toBeGreaterThan(2);
+  });
+});
+
+describe("sayfa bazlı yerleştirme — hizalama gerektirmeyen çıktı", () => {
+  const bifold = generateBifold(BIFOLD_DEFAULTS);
+
+  it("bifold parçaları döndürülünce tek sayfaya sığıyor", () => {
+    // ASIL KAZANÇ BU: döşeme olmadan hiçbir parça bölünmüyor, dolayısıyla
+    // kullanıcının sayfa hizalama hatası ürünün ölçüsüne giremiyor.
+    const layout = packPages(bifold.pieces);
+    expect(layout.oversized).toHaveLength(0);
+    expect(layout.rotatedCount).toBeGreaterThan(0);
+  });
+
+  it("her parça tam olarak bir kez yerleştiriliyor", () => {
+    const layout = packPages(bifold.pieces);
+    const placedIds = layout.pages.flatMap((p) => p.placed.map((x) => x.piece.id));
+    expect(placedIds.sort()).toEqual(bifold.pieces.map((p) => p.id).sort());
+  });
+
+  it("yerleştirilen parçalar basılabilir alanı taşmıyor", () => {
+    const area = printableArea(A4_PORTRAIT);
+    for (const page of packPages(bifold.pieces).pages) {
+      for (const p of page.placed) {
+        expect(p.x).toBeGreaterThanOrEqual(-1e-9);
+        expect(p.y).toBeGreaterThanOrEqual(-1e-9);
+        expect(p.x + p.width).toBeLessThanOrEqual(area.width + 1e-9);
+        expect(p.y + p.height).toBeLessThanOrEqual(area.height + 1e-9);
+      }
+    }
+  });
+
+  it("aynı sayfadaki parçalar üst üste binmiyor", () => {
+    for (const page of packPages(bifold.pieces).pages) {
+      for (let i = 0; i < page.placed.length; i++) {
+        for (let j = i + 1; j < page.placed.length; j++) {
+          const a = page.placed[i] as (typeof page.placed)[0];
+          const b = page.placed[j] as (typeof page.placed)[0];
+          const apart =
+            a.x + a.width <= b.x + 1e-9 ||
+            b.x + b.width <= a.x + 1e-9 ||
+            a.y + a.height <= b.y + 1e-9 ||
+            b.y + b.height <= a.y + 1e-9;
+          expect(apart).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("döndürme kapatılırsa büyük parçalar döşemeye düşüyor", () => {
+    const layout = packPages(bifold.pieces, A4_PORTRAIT, undefined, false);
+    expect(layout.rotatedCount).toBe(0);
+    expect(layout.oversized.length).toBeGreaterThan(0);
+  });
+
+  it("döndürülmüş parçada ölçüler takas ediliyor", () => {
+    const layout = packPages(bifold.pieces);
+    const outer = layout.pages
+      .flatMap((p) => p.placed)
+      .find((p) => p.piece.id === "outer");
+    expect(outer?.rotated).toBe(true);
+    expect(outer?.width).toBeCloseTo(outer?.piece.height as number, 9);
+    expect(outer?.height).toBeCloseTo(outer?.piece.width as number, 9);
+  });
+
+  it("pieceToLayout döndürmeyi doğru uyguluyor", () => {
+    // Yerel (0,0) köşesi, döndürülmüş parçada sol-ÜST köşeye gider.
+    const placed = {
+      piece: bifold.pieces[0] as (typeof bifold.pieces)[0],
+      x: 10,
+      y: 20,
+      width: 50,
+      height: 100,
+      rotated: true,
+    };
+    expect(pieceToLayout(placed, { x: 0, y: 0 }, 0, 0)).toEqual({ x: 60, y: 20 });
+    expect(pieceToLayout(placed, { x: 0, y: 50 }, 0, 0)).toEqual({ x: 10, y: 20 });
+  });
+
+  it("kartlıkta da hiç bölünme olmuyor", () => {
+    const ch = generateCardHolder(DEFAULT_PARAMS);
+    expect(packPages(ch.pieces).oversized).toHaveLength(0);
+  });
+
+  it("PDF üretilebiliyor ve sayfa sayısı makul", async () => {
+    const bytes = await buildPatternPdf(bifold, FONTS, {
+      params: BIFOLD_DEFAULTS,
+    });
+    const doc = await PDFDocument.load(bytes);
+    // kapak + montaj + adımlar + desen sayfaları
+    expect(doc.getPageCount()).toBeGreaterThanOrEqual(5);
+    expect(doc.getPageCount()).toBeLessThan(12);
   });
 });
