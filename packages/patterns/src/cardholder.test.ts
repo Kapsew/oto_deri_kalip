@@ -10,24 +10,51 @@ describe("generateCardHolder — varsayılan parametreler", () => {
     expect(r.diagnostics.filter((d) => d.severity === "error")).toHaveLength(0);
   });
 
-  it("dış kabuk + T-slot + düz yuva parçaları üretiliyor", () => {
-    expect(r.pieces.map((p) => p.id)).toEqual(["outer", "slot-rect", "slot-t"]);
+  it("dış kabuk + her yuva için ayrı parça üretiliyor", () => {
+    // Yuvalar GRUPLANAMAZ: her biri çevre dikişinden farklı delikler
+    // alıyor, dolayısıyla farklı bir kalıp.
+    expect(r.pieces.map((p) => p.id)).toEqual([
+      "outer",
+      "slot-1",
+      "slot-2",
+      "slot-3",
+      "slot-4",
+    ]);
   });
 
-  it("4 yuva = 3 T-slot + 1 düz", () => {
-    const t = r.pieces.find((p) => p.id === "slot-t");
-    const rect = r.pieces.find((p) => p.id === "slot-rect");
-    expect(t?.quantity).toBe(3);
-    expect(rect?.quantity).toBe(1);
+  it("4 yuva = 1 düz (en dip) + 3 T-slot", () => {
+    const kinds = r.pieces.filter((p) => p.id !== "outer").map((p) => p.kind);
+    expect(kinds).toEqual(["slot-rect", "slot-t", "slot-t", "slot-t"]);
+    expect(r.pieces.every((p) => p.quantity === 1)).toBe(true);
+  });
+
+  it("her yuva parçasının kendi delikleri var ve ana plandan geliyor", () => {
+    const outer = r.pieces.find((p) => p.id === "outer");
+    const slots = r.pieces.filter((p) => p.id.startsWith("slot-"));
+    for (const s of slots) {
+      expect(s.stitchPlan).toBeDefined();
+      expect(s.stitchPlan?.pitch).toBe(outer?.stitchPlan?.pitch);
+      expect(s.stitchPlan?.totalHoles).toBeLessThan(
+        outer?.stitchPlan?.totalHoles as number,
+      );
+    }
+  });
+
+  it("en dipteki yuva üsttekilerden daha çok delik alıyor", () => {
+    // Alt kenar dikişini de yakalıyor.
+    const bottom = r.pieces.find((p) => p.id === "slot-1");
+    const top = r.pieces.find((p) => p.id === "slot-4");
+    expect(bottom?.stitchPlan?.totalHoles).toBeGreaterThan(
+      top?.stitchPlan?.totalHoles as number,
+    );
   });
 
   it("bölme genişliği belgelenmiş 100mm'ye yakın", () => {
     expect(r.summary.compartmentWidth).toBeCloseTo(100, 1);
   });
 
-  it("dış kabukta çevre dikişi planı var, yuvalarda yok", () => {
+  it("dış kabukta tam çevre dikişi planı var", () => {
     expect(r.pieces.find((p) => p.id === "outer")?.stitchPlan).toBeDefined();
-    expect(r.pieces.find((p) => p.id === "slot-t")?.stitchPlan).toBeUndefined();
   });
 
   it("kat payı hesaplanıp iki kat çizgisi olarak veriliyor", () => {
@@ -67,6 +94,16 @@ describe("generateCardHolder — varsayılan parametreler", () => {
 });
 
 describe("T-slot etkisi kalıpta görünüyor", () => {
+  it("stacked yapımda tüm yuvalar düz dikdörtgen", () => {
+    const s = generateCardHolder({
+      ...DEFAULT_PARAMS,
+      construction: "stacked",
+    });
+    expect(
+      s.pieces.filter((p) => p.id !== "outer").every((p) => p.kind === "slot-rect"),
+    ).toBe(true);
+  });
+
   it("stacked ile kenar kalınlığı çok daha fazla", () => {
     const t = generateCardHolder({ ...DEFAULT_PARAMS, cardCount: 6 });
     const s = generateCardHolder({

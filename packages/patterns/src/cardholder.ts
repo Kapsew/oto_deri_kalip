@@ -14,6 +14,7 @@ import {
 } from "@odk/geometry";
 import type { Temper } from "./material.js";
 import { leather, RECOMMENDED_THICKNESS, MAX_CLOSED_THICKNESS } from "./material.js";
+import { projectStitchPlan } from "./stitchprojection.js";
 import type { CardOrientation, SlotConstruction } from "./cardslot.js";
 import { cardSlotGeometry, validateCardSlots, T_SLOT_WRAP_ALLOWANCE } from "./cardslot.js";
 import type { CrossSection, CrossSectionResult, Diagnostic, Layer } from "./crosssection.js";
@@ -100,6 +101,14 @@ export interface PatternPiece {
   readonly cutLine: Polyline;
   /** Dikiş hattı — yalnızca çevre dikişi olan parçalarda. */
   readonly stitchLine?: Polyline;
+  /**
+   * Dikiş hattı kapalı bir çevre mi?
+   *
+   * Cüzdanlarda DEĞİL: banknot ya da kart bölmesinin ağzı açık kalmak
+   * zorunda. Kapalı çizmek hem yanlış görünür hem de o kenara delik
+   * yerleştirir — dikilirse bölme kapanır ve ürün işe yaramaz.
+   */
+  readonly stitchLineClosed?: boolean;
   readonly stitchPlan?: StitchPlan;
   readonly foldLines: readonly FoldLine[];
   readonly width: Mm;
@@ -311,42 +320,29 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
     height: outerBox.height,
   });
 
-  // Yuva parçaları.
+  // --- Yuva parçaları ----------------------------------------------------
+  //
+  // HER ÖRNEK AYRI PARÇA: her yuva çevre dikişinden farklı delikler
+  // alıyor (en alttaki alt kenarı da yakalıyor, üsttekiler yalnızca yan
+  // kenarları). Delikler ana plandan yansıtılıyor ki katmanlar üst üste
+  // konduğunda tutsun.
   const slotPieceHeight = cardH(params.orientation) + params.stitchMargin;
   const mouthHeight = Math.min(params.reveal, slotPieceHeight / 2);
   const sideInset = params.stitchMargin + T_SLOT_WRAP_ALLOWANCE;
 
-  if (slotGeo.rectanglePieces > 0) {
-    const nominal = roundCorners(rectangle(0, 0, W, slotPieceHeight), true, {
-      radius: Math.min(params.cornerRadius, slotPieceHeight / 4),
-    });
-    const cut = cutLine(nominal, { penAllowance: params.penAllowance });
-    const b = bbox(cut);
-    pieces.push({
-      id: "slot-rect",
-      code: "B",
-      name: "alt yuva (düz)",
-      kind: "slot-rect",
-      quantity: slotGeo.rectanglePieces,
-      leatherThickness: params.slotThickness,
-      cutLine: cut,
-      foldLines: [],
-      width: b.width,
-      height: b.height,
-    });
-  }
+  const rectShape = roundCorners(rectangle(0, 0, W, slotPieceHeight), true, {
+    radius: Math.min(params.cornerRadius, slotPieceHeight / 4),
+  });
+  const tShape = roundCorners(
+    tSlotShape(W, slotPieceHeight, mouthHeight, sideInset),
+    true,
+    { radius: Math.min(params.cornerRadius, sideInset / 2) },
+  );
 
   if (slotGeo.tSlotPieces > 0) {
-    const nominal = roundCorners(
-      tSlotShape(W, slotPieceHeight, mouthHeight, sideInset),
-      true,
-      { radius: Math.min(params.cornerRadius, sideInset / 2) },
+    const neck = narrowestWidth(
+      cutLine(tShape, { penAllowance: params.penAllowance }),
     );
-    const cut = cutLine(nominal, { penAllowance: params.penAllowance });
-    const b = bbox(cut);
-
-    // Gövde, dikiş hattının içine girmemeli.
-    const neck = narrowestWidth(cut);
     if (neck < params.stitchMargin * 2) {
       diagnostics.push({
         severity: "warning",
@@ -357,19 +353,37 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
           `ya da bölmeyi genişletmeyi düşün.`,
       });
     }
+  }
+
+  const assembly: AssemblyPlacement[] = [];
+  const n = Math.max(0, Math.floor(params.cardCount));
+  for (let i = 0; i < n; i++) {
+    const isRect = params.construction === "stacked" || i === 0;
+    const code = `${isRect ? "B" : "C"}${i + 1}`;
+    const id = `slot-${i + 1}`;
+    const origin = { x: 0, y: i * params.reveal };
+
+    const cut = cutLine(isRect ? rectShape : tShape, {
+      penAllowance: params.penAllowance,
+    });
+    const b = bbox(cut);
+    const projected = projectStitchPlan(outerPlan, origin, cut);
 
     pieces.push({
-      id: "slot-t",
-      code: "C",
-      name: "T-slot yuva",
-      kind: "slot-t",
-      quantity: slotGeo.tSlotPieces,
+      id,
+      code,
+      name: isRect ? `alt yuva ${i + 1}` : `T-slot yuva ${i + 1}`,
+      kind: isRect ? "slot-rect" : "slot-t",
+      quantity: 1,
       leatherThickness: params.slotThickness,
       cutLine: cut,
+      ...(projected.plan === undefined ? {} : { stitchPlan: projected.plan }),
       foldLines: [],
       width: b.width,
       height: b.height,
     });
+
+    assembly.push({ pieceId: id, code, x: origin.x, y: origin.y, layer: i + 1 });
   }
 
   // --- Kural denetimi ---------------------------------------------------
@@ -391,29 +405,6 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
       message:
         `Dış kabuk ${outerBox.width.toFixed(0)} × ${outerBox.height.toFixed(0)}mm — ` +
         `tek A4'e kenar payıyla sığmıyor, birden fazla sayfaya bölünecek.`,
-    });
-  }
-
-  // --- Montaj yerleşimi -------------------------------------------------
-  //
-  // Yuvalar dış kabuğun ÖN paneline oturuyor. En alttaki yuva en dipte;
-  // her yuva bir kademe yukarıda, böylece ağızları basamak oluşturuyor
-  // ve kartlar parmakla ayrılabiliyor.
-  //
-  // En üstteki yuvanın üst kenarı tam olarak panel yüksekliğine denk
-  // geliyor: (n−1)·kademe + kart yüksekliği + dikiş payı = panelHeight.
-  const assembly: AssemblyPlacement[] = [];
-  const n = Math.max(0, Math.floor(params.cardCount));
-  for (let i = 0; i < n; i++) {
-    // i = 0 en dipteki yuva. T-slot yapımda yalnızca en dip düz
-    // dikdörtgen, üsttekiler T biçimli.
-    const isRect = params.construction === "stacked" || i === 0;
-    assembly.push({
-      pieceId: isRect ? "slot-rect" : "slot-t",
-      code: isRect ? "B" : `C-${i}`,
-      x: 0,
-      y: i * params.reveal,
-      layer: i + 1,
     });
   }
 

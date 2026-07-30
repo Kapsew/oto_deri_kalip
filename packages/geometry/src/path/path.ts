@@ -186,6 +186,27 @@ export function toCCW(poly: Polyline): Polyline {
   return isCCW(poly) ? poly : [...poly].reverse();
 }
 
+/**
+ * Nokta poligonun içinde mi? (ışın atma, çift-tek kuralı)
+ *
+ * Kenar üstündeki noktalar için sonuç kararsızdır; bu yüzden dikiş
+ * deliği projeksiyonunda kullanılmadan önce poligon dikiş payı kadar
+ * genişletilir.
+ */
+export function pointInPolygon(poly: Polyline, p: Vec): boolean {
+  let inside = false;
+  const n = poly.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const a = poly[i] as Vec;
+    const b = poly[j] as Vec;
+    const straddles = a.y > p.y !== b.y > p.y;
+    if (!straddles) continue;
+    const xAt = ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x;
+    if (p.x < xAt) inside = !inside;
+  }
+  return inside;
+}
+
 export interface BBox {
   readonly min: Vec;
   readonly max: Vec;

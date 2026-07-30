@@ -252,9 +252,8 @@ describe("PDF üretimi", () => {
   it("kapak + montaj + desen sayfaları", async () => {
     const bytes = await buildPatternPdf(pattern, FONTS);
     const doc = await PDFDocument.load(bytes);
-    const layout = packPieces(pattern.pieces);
-    const grid = planTiles(layout.width, layout.height);
-    expect(doc.getPageCount()).toBe(2 + tileCount(grid));
+    // Kapak + montaj + desen sayfaları (döşeme yoksa sayfa bazlı).
+    expect(doc.getPageCount()).toBe(2 + packPages(pattern.pieces).pages.length);
   });
 
   it("montaj yerleşimi kart sayısı kadar örnek veriyor", () => {
@@ -271,9 +270,9 @@ describe("PDF üretimi", () => {
   });
 
   it("T-slot yapımda yalnızca en dip yuva düz dikdörtgen", () => {
-    const rects = pattern.assembly.filter((a) => a.pieceId === "slot-rect");
+    const rects = pattern.pieces.filter((p) => p.kind === "slot-rect");
     expect(rects).toHaveLength(1);
-    expect(rects[0]?.layer).toBe(1);
+    expect(pattern.assembly[0]?.pieceId).toBe(rects[0]?.id);
   });
 
   it("en üstteki yuvanın üstü panel yüksekliğine TAM denk geliyor", () => {
@@ -285,7 +284,7 @@ describe("PDF üretimi", () => {
     // eklemek gerekiyor; ilk yazdığımda bunu atlayıp 0.6mm'lik sahte bir
     // uyuşmazlık görmüştüm.
     const top = pattern.assembly.at(-1);
-    const slotPiece = pattern.pieces.find((p) => p.id === "slot-t");
+    const slotPiece = pattern.pieces.find((p) => p.id === top?.pieceId);
     const nominalHeight =
       (slotPiece?.height as number) + 2 * DEFAULT_PARAMS.penAllowance;
     expect((top?.y as number) + nominalHeight).toBeCloseTo(

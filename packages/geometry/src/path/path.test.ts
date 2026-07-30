@@ -10,6 +10,7 @@ import {
   bbox,
   simplify,
   endPoint,
+  pointInPolygon,
 } from "./path.js";
 
 /** 100 x 50 dikdörtgen, CCW, sol alt köşe orijinde. */
@@ -110,6 +111,37 @@ describe("yön ve alan", () => {
     const cw = [...flattenPath(rect100x50())].reverse();
     expect(isCCW(toCCW(cw))).toBe(true);
     expect(isCCW(toCCW(flattenPath(rect100x50())))).toBe(true);
+  });
+});
+
+describe("pointInPolygon", () => {
+  const r = rect100x50();
+  const poly = flattenPath(r);
+
+  it("iç nokta true, dış nokta false", () => {
+    expect(pointInPolygon(poly, vec(50, 25))).toBe(true);
+    expect(pointInPolygon(poly, vec(-5, 25))).toBe(false);
+    expect(pointInPolygon(poly, vec(150, 25))).toBe(false);
+    expect(pointInPolygon(poly, vec(50, 80))).toBe(false);
+  });
+
+  it("delikli şekilde delik içi dışarıda sayılır", () => {
+    // Çift-tek kuralı: iki kez kesişen ışın dışarıda bırakır.
+    const withHole = [
+      ...poly,
+      vec(0, 0),
+      vec(40, 20),
+      vec(60, 20),
+      vec(60, 30),
+      vec(40, 30),
+      vec(40, 20),
+    ];
+    expect(pointInPolygon(withHole, vec(50, 25))).toBe(false);
+    expect(pointInPolygon(withHole, vec(20, 25))).toBe(true);
+  });
+
+  it("boş poligonda false", () => {
+    expect(pointInPolygon([], vec(0, 0))).toBe(false);
   });
 });
 

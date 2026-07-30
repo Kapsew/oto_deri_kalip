@@ -104,15 +104,67 @@ describe("bifold — parçalar", () => {
     expect(r.diagnostics.filter((d) => d.severity === "error")).toHaveLength(0);
   });
 
-  it("dış kabuk, iç kabuk ve yuvalar üretiliyor", () => {
-    expect(r.pieces.map((p) => p.code)).toEqual(["A", "B", "C", "D"]);
+  it("dış kabuk, iç kabuk ve panel başına ayrı yuva parçaları", () => {
+    // Sol ve sağ paneldeki yuvalar farklı kenarlardan delik alıyor,
+    // dolayısıyla aynı parça değiller.
+    expect(r.pieces.map((p) => p.code)).toEqual([
+      "A",
+      "B",
+      "C-S1",
+      "D-S2",
+      "D-S3",
+      "C-R1",
+      "D-R2",
+      "D-R3",
+    ]);
   });
 
-  it("yuva parçaları iki panel için iki kat adet", () => {
-    const rect = r.pieces.find((p) => p.id === "slot-rect");
-    const t = r.pieces.find((p) => p.id === "slot-t");
-    expect(rect?.quantity).toBe(2);
-    expect(t?.quantity).toBe(2 * (BIFOLD_DEFAULTS.cardSlotsPerSide - 1));
+  it("iç kabuk dış kabukla AYNI sayıda delik alıyor", () => {
+    // İç kabuk çevre dikişine tam boyunca yakalanır. Kat payı sırtta
+    // soğurulduğu için kenarlar hizalı; ortalanmış varsaymak yan
+    // kenarların tamamını kaybettiriyordu.
+    const outer = r.pieces.find((p) => p.id === "outer");
+    const inner = r.pieces.find((p) => p.id === "inner");
+    expect(inner?.stitchPlan?.totalHoles).toBe(outer?.stitchPlan?.totalHoles);
+  });
+
+  it("T-slot gövdesi kenara ulaşmadığı için az delik alıyor", () => {
+    // T-slot'un temel özelliği bu: gövde bölmenin kenarına uzanmıyor,
+    // yalnızca üstteki kollar çevre dikişine yakalanıyor.
+    const rect = r.pieces.find((p) => p.code === "C-S1");
+    const t = r.pieces.find((p) => p.code === "D-S2");
+    expect(t?.stitchPlan?.totalHoles).toBeLessThan(
+      rect?.stitchPlan?.totalHoles as number,
+    );
+  });
+
+  it("simetrik paneller neredeyse aynı sayıda delik alıyor", () => {
+    // Tam eşitlik beklenmiyor: dikiş açık bir U hattı, dağıtım bir
+    // uçtan başlıyor ve iki uç birebir simetrik değil. 1–2 delik fark
+    // fiziksel olarak sorunsuz.
+    const left = r.pieces.find((p) => p.code === "C-S1");
+    const right = r.pieces.find((p) => p.code === "C-R1");
+    const d = Math.abs(
+      (left?.stitchPlan?.totalHoles as number) -
+        (right?.stitchPlan?.totalHoles as number),
+    );
+    expect(d).toBeLessThanOrEqual(2);
+  });
+
+  it("ÜST KENAR AÇIK: dikiş hattı kapalı çevre değil", () => {
+    // Banknot bölmesinin ağzı dikilirse ürün işe yaramaz.
+    const outer = r.pieces.find((p) => p.id === "outer");
+    expect(outer?.stitchLineClosed).toBe(false);
+  });
+
+  it("üst kenara delik düşmüyor", () => {
+    const outer = r.pieces.find((p) => p.id === "outer");
+    const top = r.summary.panelHeight - BIFOLD_DEFAULTS.stitchMargin;
+    const holesNearTop = (outer?.stitchPlan?.holes ?? []).filter(
+      (h) => h.position.y > top - 1,
+    );
+    // Yalnızca U'nun iki ucu üst hizaya değiyor.
+    expect(holesNearTop.length).toBeLessThanOrEqual(2);
   });
 
   it("iç kabuk dış kabuktan kısa", () => {

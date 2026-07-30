@@ -12,3 +12,4 @@ export * from "./banknote.js";
 export * from "./bifold.js";
 export * from "./catalog.js";
 export * from "./instructions.js";
+export * from "./stitchprojection.js";

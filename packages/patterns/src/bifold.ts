@@ -8,7 +8,6 @@ import {
   flattenPath,
   path,
   roundCorners,
-  stitchLine,
   vec,
 } from "@odk/geometry";
 import type { Temper } from "./material.js";
@@ -21,6 +20,7 @@ import {
 } from "./material.js";
 import type { SlotConstruction } from "./cardslot.js";
 import { T_SLOT_WRAP_ALLOWANCE, cardSlotGeometry, validateCardSlots } from "./cardslot.js";
+import { projectAcrossFold, projectStitchPlan } from "./stitchprojection.js";
 import type { Currency } from "./banknote.js";
 import { billPocketGeometry, validateBillPocket } from "./banknote.js";
 import type {
@@ -232,12 +232,31 @@ export function generateBifold(params: BifoldParams): PatternResult {
     radius: params.cornerRadius,
   });
   const outerCut = cutLine(outerNominal, { penAllowance: params.penAllowance });
-  const outerStitch = roundCorners(stitchLine(outerCut, params.stitchMargin), true, {
-    radius: Math.max(1, params.cornerRadius - params.stitchMargin),
-  });
+
+  // DİKİŞ HATTI U ŞEKLİNDE — ÜST KENAR AÇIK.
+  //
+  // Bifold'un üst kenarı banknot bölmesinin AĞZI. Kapalı bir çevre
+  // dikişi hem o kenara delik yerleştirir hem de dikildiğinde para
+  // bölmesini tamamen kapatır; ürün işe yaramaz hale gelir.
+  //
+  // İlk sürümde çevre kapalıydı ve üstteki kart yuvası (D-S3) üst
+  // kenardan 28 delik alıyordu — tam olarak dikilmemesi gereken yerden.
+  const m = params.stitchMargin;
+  const outerStitch = roundCorners(
+    flattenPath(
+      path()
+        .moveTo(vec(m, walletHeight - m))
+        .lineTo(vec(m, m))
+        .lineTo(vec(outerFlat - m, m))
+        .lineTo(vec(outerFlat - m, walletHeight - m))
+        .open(),
+    ),
+    false,
+    { radius: Math.max(1, params.cornerRadius - m) },
+  );
   const outerPlan = distributeStitches(
     outerStitch,
-    true,
+    false,
     params.pitch !== undefined ? { pitch: params.pitch } : {},
   );
   const outerBox = bbox(outerCut);
@@ -252,6 +271,7 @@ export function generateBifold(params: BifoldParams): PatternResult {
     leatherThickness: params.outerThickness,
     cutLine: outerCut,
     stitchLine: outerStitch,
+    stitchLineClosed: false,
     stitchPlan: outerPlan,
     foldLines: [
       {
@@ -275,6 +295,15 @@ export function generateBifold(params: BifoldParams): PatternResult {
   });
   const innerCut = cutLine(innerNominal, { penAllowance: params.penAllowance });
   const innerBox = bbox(innerCut);
+  // İç kabuk çevre dikişine TAM BOYUNCA yakalanıyor. Kat payı sırtta
+  // soğuruluyor, kenarlar hizalı kalıyor.
+  const innerProjection = projectAcrossFold(
+    outerPlan,
+    foldCentre,
+    foldAllowance,
+    innerCut,
+    true,
+  );
   pieces.push({
     id: "inner",
     code: "B",
@@ -283,6 +312,9 @@ export function generateBifold(params: BifoldParams): PatternResult {
     quantity: 1,
     leatherThickness: params.innerThickness,
     cutLine: innerCut,
+    ...(innerProjection.plan === undefined
+      ? {}
+      : { stitchPlan: innerProjection.plan }),
     foldLines: [
       {
         from: vec(innerFlat / 2, 0),
@@ -294,56 +326,31 @@ export function generateBifold(params: BifoldParams): PatternResult {
     height: innerBox.height,
   });
 
-  // Yuva parçaları — iki panel için iki kat adet.
+  // --- Yuva parçaları ve montaj -----------------------------------------
+  //
+  // HER ÖRNEK AYRI PARÇA. Gruplamak ("T-slot yuva ×4") mümkün değil,
+  // çünkü sol paneldeki yuva sol ve alt kenardan, sağ paneldeki sağ ve
+  // alt kenardan delik alıyor; üstteki yuva alt kenar deliklerini hiç
+  // almıyor. Aynı şekil, farklı delik deseni.
+  //
+  // Delikler ana çevre planından YANSITILIYOR, parça başına yeniden
+  // hesaplanmıyor — hesaplansaydı katmanlar üst üste konduğunda
+  // tutmazdı.
   const slotPieceHeight = CARD_ID1.height + params.stitchMargin;
   const mouthHeight = Math.min(params.reveal, slotPieceHeight / 2);
   const sideInset = params.stitchMargin + T_SLOT_WRAP_ALLOWANCE;
 
-  if (slotGeo.rectanglePieces > 0) {
-    const nominal = roundCorners(rectangle(0, 0, panelWidth, slotPieceHeight), true, {
-      radius: Math.min(params.cornerRadius, slotPieceHeight / 4),
-    });
-    const cut = cutLine(nominal, { penAllowance: params.penAllowance });
-    const b = bbox(cut);
-    pieces.push({
-      id: "slot-rect",
-      code: "C",
-      name: "alt yuva (düz)",
-      kind: "slot-rect",
-      quantity: slotGeo.rectanglePieces * 2,
-      leatherThickness: params.slotThickness,
-      cutLine: cut,
-      foldLines: [],
-      width: b.width,
-      height: b.height,
-    });
-  }
+  const rectShape = roundCorners(
+    rectangle(0, 0, panelWidth, slotPieceHeight),
+    true,
+    { radius: Math.min(params.cornerRadius, slotPieceHeight / 4) },
+  );
+  const tShape = roundCorners(
+    tSlotShape(panelWidth, slotPieceHeight, mouthHeight, sideInset),
+    true,
+    { radius: Math.min(params.cornerRadius, sideInset / 2) },
+  );
 
-  if (slotGeo.tSlotPieces > 0) {
-    const nominal = roundCorners(
-      tSlotShape(panelWidth, slotPieceHeight, mouthHeight, sideInset),
-      true,
-      { radius: Math.min(params.cornerRadius, sideInset / 2) },
-    );
-    const cut = cutLine(nominal, { penAllowance: params.penAllowance });
-    const b = bbox(cut);
-    pieces.push({
-      id: "slot-t",
-      code: "D",
-      name: "T-slot yuva",
-      kind: "slot-t",
-      quantity: slotGeo.tSlotPieces * 2,
-      leatherThickness: params.slotThickness,
-      cutLine: cut,
-      foldLines: [],
-      width: b.width,
-      height: b.height,
-    });
-  }
-
-  // --- Montaj ------------------------------------------------------------
-  //
-  // İki panel: sol (x = 0) ve sağ (x = outerFlat − panelWidth).
   const assembly: AssemblyPlacement[] = [];
   const rightPanelX = Math.max(0, outerFlat - panelWidth);
   const sides: readonly { readonly x: Mm; readonly tag: string }[] = [
@@ -355,11 +362,35 @@ export function generateBifold(params: BifoldParams): PatternResult {
   for (const side of sides) {
     for (let i = 0; i < n; i++) {
       const isRect = params.construction === "stacked" || i === 0;
+      const code = `${isRect ? "C" : "D"}-${side.tag}${i + 1}`;
+      const id = `slot-${side.tag}${i + 1}`;
+      const origin = { x: side.x, y: i * params.reveal };
+
+      const cut = cutLine(isRect ? rectShape : tShape, {
+        penAllowance: params.penAllowance,
+      });
+      const b = bbox(cut);
+      const projected = projectStitchPlan(outerPlan, origin, cut);
+
+      pieces.push({
+        id,
+        code,
+        name: isRect ? `alt yuva ${side.tag}${i + 1}` : `T-slot yuva ${side.tag}${i + 1}`,
+        kind: isRect ? "slot-rect" : "slot-t",
+        quantity: 1,
+        leatherThickness: params.slotThickness,
+        cutLine: cut,
+        ...(projected.plan === undefined ? {} : { stitchPlan: projected.plan }),
+        foldLines: [],
+        width: b.width,
+        height: b.height,
+      });
+
       assembly.push({
-        pieceId: isRect ? "slot-rect" : "slot-t",
-        code: `${isRect ? "C" : "D"}-${side.tag}${i + 1}`,
-        x: side.x,
-        y: params.stitchMargin + i * params.reveal,
+        pieceId: id,
+        code,
+        x: origin.x,
+        y: origin.y,
         layer: layerIndex,
       });
       layerIndex += 1;

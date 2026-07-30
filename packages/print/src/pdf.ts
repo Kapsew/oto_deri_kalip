@@ -548,6 +548,15 @@ function drawAssemblyPage(ctx: Ctx, pattern: PatternResult): void {
   });
 
   polyline(page, outer.cutLine.map((p) => place(p)), true, STYLES.cut, 1);
+  if (outer.stitchLine !== undefined) {
+    polyline(
+      page,
+      outer.stitchLine.map((p) => place(p)),
+      outer.stitchLineClosed ?? true,
+      STYLES.stitch,
+      1,
+    );
+  }
   for (const fold of outer.foldLines) {
     line(page, place(fold.from), place(fold.to), STYLES.fold, 1);
   }
@@ -753,7 +762,15 @@ function drawPiece(
   polyline(page, piece.cutLine.map(place), true, STYLES.cut, ctx.scale);
 
   if (piece.stitchLine !== undefined) {
-    polyline(page, piece.stitchLine.map(place), true, STYLES.stitch, ctx.scale);
+    // Açık dikiş hattını kapalı çizmek, dikilmemesi gereken kenara
+    // (bölme ağzı) sahte bir çizgi koyar.
+    polyline(
+      page,
+      piece.stitchLine.map(place),
+      piece.stitchLineClosed ?? true,
+      STYLES.stitch,
+      ctx.scale,
+    );
   }
 
   for (const fold of piece.foldLines) {
