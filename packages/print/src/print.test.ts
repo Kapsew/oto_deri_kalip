@@ -236,12 +236,54 @@ describe("PDF üretimi", () => {
     }
   });
 
-  it("kapak + desen sayfaları", async () => {
+  it("kapak + montaj + desen sayfaları", async () => {
     const bytes = await buildPatternPdf(pattern, FONTS);
     const doc = await PDFDocument.load(bytes);
     const layout = packPieces(pattern.pieces);
     const grid = planTiles(layout.width, layout.height);
-    expect(doc.getPageCount()).toBe(1 + tileCount(grid));
+    expect(doc.getPageCount()).toBe(2 + tileCount(grid));
+  });
+
+  it("montaj yerleşimi kart sayısı kadar örnek veriyor", () => {
+    expect(pattern.assembly).toHaveLength(DEFAULT_PARAMS.cardCount);
+  });
+
+  it("montajda yuvalar kademe kadar aralıklı", () => {
+    for (let i = 1; i < pattern.assembly.length; i++) {
+      const a = pattern.assembly[i - 1] as (typeof pattern.assembly)[0];
+      const b = pattern.assembly[i] as (typeof pattern.assembly)[0];
+      expect(b.y - a.y).toBeCloseTo(DEFAULT_PARAMS.reveal, 9);
+      expect(b.layer).toBe(a.layer + 1);
+    }
+  });
+
+  it("T-slot yapımda yalnızca en dip yuva düz dikdörtgen", () => {
+    const rects = pattern.assembly.filter((a) => a.pieceId === "slot-rect");
+    expect(rects).toHaveLength(1);
+    expect(rects[0]?.layer).toBe(1);
+  });
+
+  it("en üstteki yuvanın üstü panel yüksekliğine TAM denk geliyor", () => {
+    // Kademe dizilimi paneli tam doldurmalı: (n−1)·kademe + kart
+    // yüksekliği + dikiş payı = panelHeight.
+    //
+    // DİKKAT: parça yükseklikleri KESİM ölçüsü (kalem payı iki kenardan
+    // düşülmüş), montaj konumları ise nominal. Karşılaştırmada payı geri
+    // eklemek gerekiyor; ilk yazdığımda bunu atlayıp 0.6mm'lik sahte bir
+    // uyuşmazlık görmüştüm.
+    const top = pattern.assembly.at(-1);
+    const slotPiece = pattern.pieces.find((p) => p.id === "slot-t");
+    const nominalHeight =
+      (slotPiece?.height as number) + 2 * DEFAULT_PARAMS.penAllowance;
+    expect((top?.y as number) + nominalHeight).toBeCloseTo(
+      pattern.summary.panelHeight,
+      6,
+    );
+  });
+
+  it("parça kodları benzersiz", () => {
+    const codes = pattern.pieces.map((p) => p.code);
+    expect(new Set(codes).size).toBe(codes.length);
   });
 
   it("mono font BOŞLUK karakterini gömebiliyor", async () => {
@@ -283,6 +325,16 @@ describe("PDF üretimi", () => {
     const few = await buildPatternPdf(pattern, FONTS, { printAllHoles: false });
     const many = await buildPatternPdf(pattern, FONTS, { printAllHoles: true });
     expect(many.length).toBeGreaterThan(few.length);
+  });
+
+  it("VARSAYILAN tüm delikleri basıyor", async () => {
+    // Yaygın iş akışı kağıt şablonu deriye bantlayıp işaretli
+    // noktalardan delmek; noktalar şablonun asıl işlevlerinden biri.
+    const def = await buildPatternPdf(pattern, FONTS);
+    const anchorsOnly = await buildPatternPdf(pattern, FONTS, {
+      printAllHoles: false,
+    });
+    expect(def.length).toBeGreaterThan(anchorsOnly.length);
   });
 
   it("çok sayfalı kalıpta sayfa sayısı artıyor", async () => {

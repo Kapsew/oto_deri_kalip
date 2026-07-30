@@ -106,7 +106,7 @@ interface PrintState {
 }
 
 const INITIAL_PRINT: PrintState = {
-  printAllHoles: false,
+  printAllHoles: true,
   measured: "50",
   scaleFactor: 1,
   note: "",
@@ -308,7 +308,7 @@ export default function App() {
               { value: "anchors", label: "Sadece köşe" },
               { value: "all", label: "Hepsi" },
             ]}
-            hint="Delikleri iron ile kendin yürüyorsan köşe çapaları yeterli; kapak sayfasında kenar başına sayı var."
+            hint="Şablonu deriye bantlayıp noktalardan deleceksen 'Hepsi'. Ironu kendin yürüteceksen köşe çapaları yeterli."
             onChange={(v) =>
               setPrint((p) => ({ ...p, printAllHoles: v === "all" }))
             }

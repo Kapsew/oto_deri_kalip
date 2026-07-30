@@ -85,6 +85,13 @@ export interface FoldLine {
 
 export interface PatternPiece {
   readonly id: string;
+  /**
+   * Kısa ve kararlı parça kodu (A, B, C...).
+   *
+   * Talimatlarda ve montaj görünümünde parçalara atıf yapmak için.
+   * Ad değişebilir, kod değişmez.
+   */
+  readonly code: string;
   readonly name: string;
   readonly kind: PieceKind;
   readonly quantity: number;
@@ -99,6 +106,22 @@ export interface PatternPiece {
   readonly height: Mm;
 }
 
+/**
+ * Montajdaki bir parça örneği.
+ *
+ * NEDEN AYRI BİR LİSTE: parçalar tipe göre gruplanıyor ("T-slot yuva ×3")
+ * ama montaj görünümü her örneği ayrı konumda göstermek zorunda.
+ */
+export interface AssemblyPlacement {
+  readonly pieceId: string;
+  readonly code: string;
+  /** Dış kabuğun sol-alt köşesine göre konum. */
+  readonly x: Mm;
+  readonly y: Mm;
+  /** 0 = en altta (dış kabuk). Büyük sayı üstte. */
+  readonly layer: number;
+}
+
 export interface PatternSummary {
   readonly compartmentWidth: Mm;
   readonly slotStackHeight: Mm;
@@ -108,6 +131,8 @@ export interface PatternSummary {
   readonly loadedThickness: Mm;
   readonly edgeThickness: Mm;
   readonly foldAllowance: Mm;
+  /** Katlanmış hâlde bir panelin yüksekliği. */
+  readonly panelHeight: Mm;
   readonly totalHoles: number;
   readonly pitch: Mm;
   readonly fitsA4: boolean;
@@ -115,6 +140,8 @@ export interface PatternSummary {
 
 export interface PatternResult {
   readonly pieces: readonly PatternPiece[];
+  /** Parçaların bitmiş üründeki (açık hâlde) yerleşimi. */
+  readonly assembly: readonly AssemblyPlacement[];
   readonly crossSection: CrossSectionResult;
   readonly diagnostics: readonly Diagnostic[];
   readonly summary: PatternSummary;
@@ -260,6 +287,7 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
   const foldY = outerFlat / 2;
   pieces.push({
     id: "outer",
+    code: "A",
     name: "dış kabuk",
     kind: "outer",
     quantity: 1,
@@ -296,6 +324,7 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
     const b = bbox(cut);
     pieces.push({
       id: "slot-rect",
+      code: "B",
       name: "alt yuva (düz)",
       kind: "slot-rect",
       quantity: slotGeo.rectanglePieces,
@@ -331,6 +360,7 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
 
     pieces.push({
       id: "slot-t",
+      code: "C",
       name: "T-slot yuva",
       kind: "slot-t",
       quantity: slotGeo.tSlotPieces,
@@ -364,8 +394,32 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
     });
   }
 
+  // --- Montaj yerleşimi -------------------------------------------------
+  //
+  // Yuvalar dış kabuğun ÖN paneline oturuyor. En alttaki yuva en dipte;
+  // her yuva bir kademe yukarıda, böylece ağızları basamak oluşturuyor
+  // ve kartlar parmakla ayrılabiliyor.
+  //
+  // En üstteki yuvanın üst kenarı tam olarak panel yüksekliğine denk
+  // geliyor: (n−1)·kademe + kart yüksekliği + dikiş payı = panelHeight.
+  const assembly: AssemblyPlacement[] = [];
+  const n = Math.max(0, Math.floor(params.cardCount));
+  for (let i = 0; i < n; i++) {
+    // i = 0 en dipteki yuva. T-slot yapımda yalnızca en dip düz
+    // dikdörtgen, üsttekiler T biçimli.
+    const isRect = params.construction === "stacked" || i === 0;
+    assembly.push({
+      pieceId: isRect ? "slot-rect" : "slot-t",
+      code: isRect ? "B" : `C-${i}`,
+      x: 0,
+      y: i * params.reveal,
+      layer: i + 1,
+    });
+  }
+
   return {
     pieces,
+    assembly,
     crossSection: solved,
     diagnostics,
     summary: {
@@ -377,6 +431,7 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
       loadedThickness,
       edgeThickness: slotGeo.edgeThickness,
       foldAllowance,
+      panelHeight,
       totalHoles: outerPlan.totalHoles,
       pitch: outerPlan.pitch,
       fitsA4,

@@ -51,11 +51,16 @@ export interface PdfOptions {
   /**
    * Dikiş deliklerini tek tek bas.
    *
-   * Varsayılan KAPALI. Elle çalışan kullanıcı delikleri pricking iron
-   * ile kendisi yürüyor; yüzlerce nokta basmak hem mürekkep israfı hem
-   * de yanıltıcı — kağıda basılmış nokta ile ironun gerçek adımı
-   * arasındaki fark kullanıcıyı yanlış yönlendirir. Bunun yerine köşe
-   * çapaları ve kenar başına delik sayısı veriliyor.
+   * Varsayılan AÇIK.
+   *
+   * İlk sürümde kapalıydı; gerekçem "kullanıcı ironu kendisi yürür,
+   * basılmış nokta yanıltır" idi. Ticari kalıpları inceleyince bu
+   * varsayımın yanlış olduğu görüldü: yaygın iş akışı kağıt şablonu
+   * deriye bantlayıp İŞARETLİ NOKTALARDAN delmek, sonra hattı kesmek.
+   * Yani noktalar şablonun asıl işlevlerinden biri.
+   *
+   * Kapalıyken yalnızca köşe çapaları basılır; ironu kendisi yürütenler
+   * için hâlâ geçerli bir seçenek.
    */
   readonly printAllHoles?: boolean;
   readonly title?: string;
@@ -98,6 +103,7 @@ export async function buildPatternPdf(
   const grid = planTiles(layout.width, layout.height, paper);
 
   drawCoverPage(ctx, pattern, layout, grid, options);
+  drawAssemblyPage(ctx, pattern);
 
   for (let row = 0; row < grid.rows; row++) {
     for (let col = 0; col < grid.cols; col++) {
@@ -245,7 +251,8 @@ function drawCoverPage(
   y -= 12;
   text(page, "3 — Parçalar", left, y, 12, ctx.body);
   y -= 6;
-  text(page, "parça", left, y, 8, ctx.mono, 0.5);
+  text(page, "kod", left, y, 8, ctx.mono, 0.5);
+  text(page, "parça", left + 12, y, 8, ctx.mono, 0.5);
   text(page, "adet", left + 55, y, 8, ctx.mono, 0.5);
   text(page, "ölçü (mm)", left + 70, y, 8, ctx.mono, 0.5);
   text(page, "deri", left + 110, y, 8, ctx.mono, 0.5);
@@ -254,7 +261,8 @@ function drawCoverPage(
   y -= 4.5;
 
   for (const p of pattern.pieces) {
-    text(page, p.name, left, y, 9, ctx.body);
+    text(page, p.code, left, y, 9, ctx.mono);
+    text(page, p.name, left + 12, y, 9, ctx.body);
     text(page, `${p.quantity}`, left + 55, y, 9, ctx.mono);
     text(
       page,
@@ -344,6 +352,155 @@ function wrap(s: string, maxChars: number): string[] {
   return lines;
 }
 
+// --- Ölçü çizgileri --------------------------------------------------------
+
+/**
+ * Uzatma çizgileri, oklar ve ortalanmış metinle ölçü çizgisi.
+ *
+ * Referans olarak incelediğimiz ticari kalıplarda ölçüler çizimin
+ * ÜSTÜNDE gösteriliyor, sadece etiket metninde değil. Fark şu: kullanıcı
+ * kağıdı cetvelle kontrol ederken hangi iki nokta arasını ölçeceğini
+ * çizimden görüyor. "99.4 × 194.4mm" yazısı bunu söylemiyor.
+ */
+function dimension(
+  ctx: Ctx,
+  page: PDFPage,
+  a: Vec,
+  b: Vec,
+  offset: Mm,
+  label: string,
+  vertical: boolean,
+): void {
+  const style = STYLES.guide;
+  const arm = 2;
+
+  const oa = vertical ? { x: a.x - offset, y: a.y } : { x: a.x, y: a.y + offset };
+  const ob = vertical ? { x: b.x - offset, y: b.y } : { x: b.x, y: b.y + offset };
+
+  // Uzatma çizgileri: ölçülen kenardan ölçü çizgisine.
+  line(page, a, vertical ? { x: oa.x - arm, y: a.y } : { x: a.x, y: oa.y + arm }, style, 1);
+  line(page, b, vertical ? { x: ob.x - arm, y: b.y } : { x: b.x, y: ob.y + arm }, style, 1);
+
+  // Ölçü çizgisi.
+  line(page, oa, ob, style, 1);
+
+  // Uç işaretleri (45° eğik çizgi — ok başından daha net basılıyor).
+  for (const p of [oa, ob]) {
+    line(
+      page,
+      { x: p.x - 1.2, y: p.y - 1.2 },
+      { x: p.x + 1.2, y: p.y + 1.2 },
+      STYLES.cut,
+      1,
+    );
+  }
+
+  const mid = { x: (oa.x + ob.x) / 2, y: (oa.y + ob.y) / 2 };
+  const w = ctx.mono.widthOfTextAtSize(label, 8) / mmToPt(1);
+  if (vertical) {
+    text(page, label, mid.x - w - 1.5, mid.y - 1, 8, ctx.mono, 0.15);
+  } else {
+    text(page, label, mid.x - w / 2, mid.y + 1.5, 8, ctx.mono, 0.15);
+  }
+}
+
+// --- Montaj sayfası --------------------------------------------------------
+
+/**
+ * Parçaların bitmiş üründeki yerleşimi.
+ *
+ * BU SAYFA EN ÇOK EKSİK OLANDI. Önceki sürümde kalıp, birbirinden
+ * bağımsız parçalar listesiydi; hangi parçanın nereye geldiği yalnızca
+ * kullanıcının kafasındaydı. Referans kalıplarda "Completed Wallet"
+ * sayfası tam olarak bunu çözüyor.
+ */
+function drawAssemblyPage(ctx: Ctx, pattern: PatternResult): void {
+  const page = addPage(ctx);
+  const area = printableArea(ctx.paper);
+  const left = area.originX;
+  let y = ctx.paper.height - ctx.paper.printerMargin - 8;
+
+  text(page, "Montaj — açık hâl", left, y, 15, ctx.body);
+  y -= 6;
+  text(
+    page,
+    "Yuvalar ön panele oturur; her yuva bir kademe yukarıda.",
+    left,
+    y,
+    9,
+    ctx.body,
+    0.3,
+  );
+
+  const outer = pattern.pieces.find((p) => p.id === "outer");
+  if (outer === undefined) {
+    drawFooter(ctx, page, "montaj", 0);
+    return;
+  }
+
+  // Çizimi sayfaya sığdır: ölçekle, çünkü bu sayfa 1:1 DEĞİL.
+  const drawH = y - area.originY - 26;
+  const fit = Math.min(1, (area.width - 40) / outer.width, drawH / outer.height);
+  const ox = left + 24;
+  const oy = area.originY + 20;
+
+  const minX = Math.min(...outer.cutLine.map((p) => p.x));
+  const minY = Math.min(...outer.cutLine.map((p) => p.y));
+  const place = (p: Vec, dx = 0, dy = 0): Vec => ({
+    x: ox + (p.x - minX + dx) * fit,
+    y: oy + (p.y - minY + dy) * fit,
+  });
+
+  polyline(page, outer.cutLine.map((p) => place(p)), true, STYLES.cut, 1);
+  for (const fold of outer.foldLines) {
+    line(page, place(fold.from), place(fold.to), STYLES.fold, 1);
+  }
+
+  // Yuvalar, montajdaki konumlarında.
+  for (const a of pattern.assembly) {
+    const piece = pattern.pieces.find((p) => p.id === a.pieceId);
+    if (piece === undefined) continue;
+    const pminX = Math.min(...piece.cutLine.map((p) => p.x));
+    const pminY = Math.min(...piece.cutLine.map((p) => p.y));
+    const poly = piece.cutLine.map((p) =>
+      place({ x: p.x - pminX + a.x, y: p.y - pminY + a.y }),
+    );
+    polyline(page, poly, true, STYLES.guide, 1);
+
+    const anchor = place({ x: a.x + 4, y: a.y + 3 });
+    text(page, a.code, anchor.x, anchor.y, 7.5, ctx.mono, 0.2);
+  }
+
+  text(
+    page,
+    outer.code,
+    ox + 3 * fit,
+    oy + (outer.height - 6) * fit,
+    9,
+    ctx.mono,
+    0.2,
+  );
+
+  // Ölçüler.
+  const bl = place({ x: 0, y: 0 });
+  const br = place({ x: outer.width, y: 0 });
+  const tl = place({ x: 0, y: outer.height });
+  dimension(ctx, page, bl, br, 10, `${outer.width.toFixed(1)} mm`, false);
+  dimension(ctx, page, bl, tl, 12, `${outer.height.toFixed(1)} mm`, true);
+
+  text(
+    page,
+    `bu sayfa ölçekli (×${fit.toFixed(2)}) — kesim için desen sayfalarını kullan`,
+    left,
+    area.originY + 4,
+    8,
+    ctx.mono,
+    0.45,
+  );
+
+  drawFooter(ctx, page, "montaj", 0);
+}
+
 // --- Desen sayfaları -------------------------------------------------------
 
 function drawTilePage(
@@ -378,7 +535,7 @@ function drawTilePage(
   });
 
   for (const placed of layout.placed) {
-    drawPiece(ctx, page, placed, tx, options.printAllHoles ?? false);
+    drawPiece(ctx, page, placed, tx, options.printAllHoles ?? true);
   }
 
   page.pushOperators(popGraphicsState());
@@ -435,7 +592,7 @@ function drawPiece(
   });
   text(
     page,
-    `${piece.name}  ×${piece.quantity}  ${piece.width.toFixed(1)}×${piece.height.toFixed(1)}mm  ${piece.leatherThickness.toFixed(1)}mm deri`,
+    `${piece.code} · ${piece.name}  ×${piece.quantity}  ${piece.width.toFixed(1)}×${piece.height.toFixed(1)}mm  ${piece.leatherThickness.toFixed(1)}mm deri`,
     label.x,
     label.y,
     7.5,
