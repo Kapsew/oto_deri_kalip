@@ -493,3 +493,117 @@ button.primary:disabled {
   outline: 2px solid var(--chalk);
   outline-offset: 2px;
 }
+
+/* ── Katalog ───────────────────────────────────────────────────────── */
+
+.cat {
+  margin-bottom: 12px;
+}
+
+.cat-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bone);
+}
+
+.fam {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.fam-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0 4px 9px;
+  border-left: 1px solid var(--panel-edge);
+  font-size: 12px;
+  color: var(--bone-faint);
+}
+
+.fam-item[data-status="hazir"] {
+  border-left-color: var(--brass);
+  color: var(--bone);
+}
+
+.fam-status {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--bone-faint);
+  white-space: nowrap;
+}
+
+.fam-item[data-status="hazir"] .fam-status {
+  color: var(--brass);
+}
+
+/* ── Yapım adımları ────────────────────────────────────────────────── */
+
+.steps {
+  max-width: 640px;
+  margin-bottom: 32px;
+}
+
+.steps h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.steps ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.steps li {
+  counter-increment: step;
+  position: relative;
+  padding: 0 0 16px 30px;
+  border-left: 1px solid var(--panel-edge);
+  margin-left: 8px;
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: -9px;
+  top: 0;
+  width: 18px;
+  height: 18px;
+  background: var(--mat-deep);
+  border: 1px solid var(--panel-edge);
+  color: var(--bone-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.steps li:last-child {
+  border-left-color: transparent;
+}
+
+.step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bone);
+}
+
+.steps p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--bone-dim);
+}
+
+.step-warn {
+  border-left: 2px solid var(--warn);
+  padding-left: 9px;
+  margin-top: 7px !important;
+  color: var(--bone) !important;
+  font-size: 12px !important;
+}

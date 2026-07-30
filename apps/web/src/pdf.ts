@@ -1,4 +1,4 @@
-import type { PatternResult } from "@odk/patterns";
+import type { PatternResult, CardHolderParams } from "@odk/patterns";
 import { buildPatternPdf, scaleFromMeasurement } from "@odk/print";
 import regularUrl from "@expo-google-fonts/ibm-plex-sans/400Regular/IBMPlexSans_400Regular.ttf?url";
 import monoUrl from "@expo-google-fonts/jetbrains-mono/400Regular/JetBrainsMono_400Regular.ttf?url";
@@ -27,6 +27,8 @@ export interface DownloadOptions {
   readonly printAllHoles: boolean;
   readonly scaleFactor: number;
   readonly title: string;
+  /** Yapım adımları sayfası için gerekli. */
+  readonly params: CardHolderParams;
 }
 
 export async function downloadPatternPdf(
@@ -39,6 +41,7 @@ export async function downloadPatternPdf(
     scaleFactor: options.scaleFactor,
     title: options.title,
     version: new Date().toISOString().slice(0, 10),
+    params: options.params,
   });
 
   const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { PDFDocument } from "pdf-lib";
 import { mmToPt } from "@odk/geometry";
-import { DEFAULT_PARAMS, generateCardHolder } from "@odk/patterns";
+import { DEFAULT_PARAMS, generateCardHolder, buildInstructions } from "@odk/patterns";
 import {
   A4_PORTRAIT,
   printableArea,
@@ -325,6 +325,30 @@ describe("PDF üretimi", () => {
     const few = await buildPatternPdf(pattern, FONTS, { printAllHoles: false });
     const many = await buildPatternPdf(pattern, FONTS, { printAllHoles: true });
     expect(many.length).toBeGreaterThan(few.length);
+  });
+
+  it("params verilirse yapım adımları sayfası ekleniyor", async () => {
+    const without = await PDFDocument.load(
+      await buildPatternPdf(pattern, FONTS),
+    );
+    const withSteps = await PDFDocument.load(
+      await buildPatternPdf(pattern, FONTS, { params: DEFAULT_PARAMS }),
+    );
+    expect(withSteps.getPageCount()).toBeGreaterThan(without.getPageCount());
+  });
+
+  it("adım sayfası sayısı metin uzunluğuna göre hesaplanıyor", async () => {
+    // Sabit "sayfa başına N adım" varsayımı yok; 8 yuvalı kalıpta
+    // yapıştırma sırası uzuyor ve taşma buna göre hesaplanmalı.
+    const big = generateCardHolder({ ...DEFAULT_PARAMS, cardCount: 8 });
+    const steps = buildInstructions(big, { ...DEFAULT_PARAMS, cardCount: 8 });
+    expect(steps.length).toBeGreaterThan(8);
+    const doc = await PDFDocument.load(
+      await buildPatternPdf(big, FONTS, {
+        params: { ...DEFAULT_PARAMS, cardCount: 8 },
+      }),
+    );
+    expect(doc.getPageCount()).toBeGreaterThan(4);
   });
 
   it("VARSAYILAN tüm delikleri basıyor", async () => {

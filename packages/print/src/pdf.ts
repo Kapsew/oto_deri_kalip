@@ -13,7 +13,13 @@ import {
 import fontkit from "@pdf-lib/fontkit";
 import type { Mm, Polyline, Vec } from "@odk/geometry";
 import { mmToPt, stitchSummary } from "@odk/geometry";
-import type { PatternResult, PatternPiece } from "@odk/patterns";
+import type {
+  PatternResult,
+  PatternPiece,
+  CardHolderParams,
+  InstructionStep,
+} from "@odk/patterns";
+import { buildInstructions } from "@odk/patterns";
 import type { PaperSpec, TileGrid } from "./paper.js";
 import {
   A4_PORTRAIT,
@@ -65,6 +71,13 @@ export interface PdfOptions {
   readonly printAllHoles?: boolean;
   readonly title?: string;
   readonly version?: string;
+  /**
+   * Verilirse yapım adımları sayfası eklenir.
+   *
+   * Adımlar kalıptan türetildiği için parametrelere ihtiyaç var;
+   * PatternResult tek başına yetmiyor.
+   */
+  readonly params?: CardHolderParams;
 }
 
 const BLACK = rgb(0, 0, 0);
@@ -104,6 +117,9 @@ export async function buildPatternPdf(
 
   drawCoverPage(ctx, pattern, layout, grid, options);
   drawAssemblyPage(ctx, pattern);
+  if (options.params !== undefined) {
+    drawInstructionPages(ctx, buildInstructions(pattern, options.params));
+  }
 
   for (let row = 0; row < grid.rows; row++) {
     for (let col = 0; col < grid.cols; col++) {
@@ -499,6 +515,78 @@ function drawAssemblyPage(ctx: Ctx, pattern: PatternResult): void {
   );
 
   drawFooter(ctx, page, "montaj", 0);
+}
+
+// --- Yapım adımları --------------------------------------------------------
+
+/**
+ * Adımlar sayfası. Sığmayan adımlar bir sonraki sayfaya taşar.
+ *
+ * Sayfa taşması hesaplanarak yapılıyor, sabit "sayfa başına 6 adım"
+ * gibi bir varsayımla değil: adım metinleri kalıptan türediği için
+ * uzunlukları parametrelere göre değişiyor.
+ */
+function drawInstructionPages(ctx: Ctx, steps: readonly InstructionStep[]): void {
+  const area = printableArea(ctx.paper);
+  const left = area.originX;
+  const bottomLimit = area.originY + 4;
+  const wrapWidth = 84;
+
+  let page = addPage(ctx);
+  let pageIndex = 1;
+  let y = ctx.paper.height - ctx.paper.printerMargin - 8;
+
+  text(page, "Yapım adımları", left, y, 15, ctx.body);
+  y -= 9;
+
+  for (const step of steps) {
+    const bodyLines = wrap(step.body, wrapWidth);
+    const warnLines =
+      step.warning === undefined ? [] : wrap(step.warning, wrapWidth - 4);
+    const needed = 6 + bodyLines.length * 4.2 + (warnLines.length * 4 + 3) + 5;
+
+    if (y - needed < bottomLimit) {
+      drawFooter(ctx, page, `adımlar ${pageIndex}`, 0);
+      page = addPage(ctx);
+      pageIndex += 1;
+      y = ctx.paper.height - ctx.paper.printerMargin - 8;
+      text(page, `Yapım adımları (devam)`, left, y, 15, ctx.body);
+      y -= 9;
+    }
+
+    // Numara solda, metin girintili — göz kolayca adım sınırlarını buluyor.
+    text(page, `${step.n}`, left, y, 11, ctx.mono, 0.45);
+    text(page, step.title, left + 8, y, 11.5, ctx.body);
+    y -= 5.4;
+
+    for (const bl of bodyLines) {
+      text(page, bl, left + 8, y, 9, ctx.body, 0.25);
+      y -= 4.2;
+    }
+
+    if (warnLines.length > 0) {
+      y -= 1;
+      const boxTop = y + 3.5;
+      const boxHeight = warnLines.length * 4 + 2;
+      // Sol kenarda kalın çubuk: uyarıyı gövdeden ayırıyor. Renk yerine
+      // konum ve kalınlık kullanılıyor, siyah-beyaz baskıda da ayrışsın.
+      page.drawRectangle({
+        x: mmToPt(left + 8),
+        y: mmToPt(boxTop - boxHeight),
+        width: mmToPt(0.8),
+        height: mmToPt(boxHeight),
+        color: gray(0.15),
+      });
+      for (const wl of warnLines) {
+        text(page, wl, left + 11, y, 8.5, ctx.body, 0.1);
+        y -= 4;
+      }
+    }
+
+    y -= 5;
+  }
+
+  drawFooter(ctx, page, `adımlar ${pageIndex}`, 0);
 }
 
 // --- Desen sayfaları -------------------------------------------------------

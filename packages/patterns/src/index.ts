@@ -8,3 +8,5 @@ export * from "./material.js";
 export * from "./crosssection.js";
 export * from "./cardslot.js";
 export * from "./cardholder.js";
+export * from "./catalog.js";
+export * from "./instructions.js";

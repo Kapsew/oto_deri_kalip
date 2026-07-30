@@ -5,9 +5,14 @@ import type {
   SlotConstruction,
 } from "@odk/patterns";
 import {
+  CATEGORIES,
   DEFAULT_PARAMS,
+  buildInstructions,
+  categoryHasAvailable,
+  familiesByCategory,
   generateCardHolder,
   stitchSummaryFor,
+  STATUS_LABEL,
 } from "./engine.js";
 import { PieceView } from "./PieceView.js";
 
@@ -177,6 +182,31 @@ export default function App() {
             ölçüler mm · ızgara 10mm, kalın çizgi 50mm
           </p>
         </header>
+
+        <div className="group">
+          <span className="group-title">Katalog</span>
+          {CATEGORIES.map((c) => (
+            <div className="cat" key={c.id}>
+              <span className="cat-name">{c.name}</span>
+              <ul className="fam">
+                {familiesByCategory(c.id).map((f) => (
+                  <li
+                    key={f.id}
+                    className="fam-item"
+                    data-status={f.status}
+                    aria-disabled={f.status !== "hazir"}
+                  >
+                    <span>{f.name}</span>
+                    <span className="fam-status">{STATUS_LABEL[f.status]}</span>
+                  </li>
+                ))}
+              </ul>
+              {!categoryHasAvailable(c.id) && (
+                <p className="hint">{c.description}</p>
+              )}
+            </div>
+          ))}
+        </div>
 
         <fieldset className="group" style={{ border: 0, margin: 0, padding: 0 }}>
           <legend>Yuvalar</legend>
@@ -371,6 +401,7 @@ export default function App() {
                     printAllHoles: print.printAllHoles,
                     scaleFactor: print.scaleFactor,
                     title: `Kartlık ${params.cardCount} yuva`,
+                    params,
                   }),
                 )
                 .catch((err: unknown) => {
@@ -480,6 +511,21 @@ function Result({
           <PieceView piece={piece} pxPerMm={PX_PER_MM} />
         </section>
       ))}
+
+      <section className="steps">
+        <h3>Yapım adımları</h3>
+        <ol>
+          {buildInstructions(value, params).map((step) => (
+            <li key={step.n}>
+              <span className="step-title">{step.title}</span>
+              <p>{step.body}</p>
+              {step.warning !== undefined && (
+                <p className="step-warn">{step.warning}</p>
+              )}
+            </li>
+          ))}
+        </ol>
+      </section>
 
       <div className="columns">
         <table className="readout">
