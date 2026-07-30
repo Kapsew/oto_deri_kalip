@@ -147,7 +147,19 @@ export interface PatternSummary {
   readonly foldAllowance: Mm;
   /** Katlanmış hâlde bir panelin yüksekliği. */
   readonly panelHeight: Mm;
+  /** Bir dikiş hattındaki delik sayısı (ana plan). */
   readonly totalHoles: number;
+  /**
+   * Gerçekten DİKİLECEK delik sayısı.
+   *
+   * totalHoles'tan farklı olabilir: çantada iki ayrı dikiş var
+   * (ön panel–körük ve arka panel–körük), cüzdanda tek çevre dikişi.
+   *
+   * Parça başına delikleri toplamak YANLIŞ olur — dikiş bütün
+   * katmanlardan bir kerede geçiyor, aynı fiziksel delik her katmanda
+   * ayrı sayılmamalı.
+   */
+  readonly stitchedHoles: number;
   readonly pitch: Mm;
   readonly fitsA4: boolean;
   /**
@@ -475,6 +487,7 @@ export function generateCardHolder(params: CardHolderParams): PatternResult {
       foldAllowance,
       panelHeight: walletHeight,
       totalHoles: outerPlan.totalHoles,
+      stitchedHoles: outerPlan.totalHoles,
       pitch: outerPlan.pitch,
       fitsA4,
       metrics: [

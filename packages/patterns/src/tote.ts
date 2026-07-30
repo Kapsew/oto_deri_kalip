@@ -513,6 +513,8 @@ export function generateTote(params: ToteParams): PatternResult {
     foldAllowance: arcLength,
     panelHeight: panelBox.height,
     totalHoles: masterPlan.totalHoles,
+    // Çantada İKİ dikiş var: körük–ön panel ve körük–arka panel.
+    stitchedHoles: masterPlan.totalHoles * 2,
     pitch: masterPlan.pitch,
     fitsA4: oversized.length === 0,
     metrics: [

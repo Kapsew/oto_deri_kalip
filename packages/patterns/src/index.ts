@@ -12,5 +12,6 @@ export * from "./banknote.js";
 export * from "./bifold.js";
 export * from "./tote.js";
 export * from "./catalog.js";
+export * from "./costing.js";
 export * from "./instructions.js";
 export * from "./stitchprojection.js";

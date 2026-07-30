@@ -23,7 +23,11 @@ import {
   stitchSummaryFor,
   STATUS_LABEL,
   TOTE_DEFAULTS,
+  DEFAULT_RATES,
+  costNotes,
+  estimateCost,
 } from "./engine.js";
+import type { CostRates } from "@odk/patterns";
 
 type FamilyId = "card-holder-fold" | "bifold" | "tote";
 import { PieceView } from "./PieceView.js";
@@ -171,6 +175,7 @@ export default function App() {
   const [bifold, setBifold] = useState<BifoldParams>(BIFOLD_DEFAULTS);
   const [tote, setTote] = useState<ToteParams>(TOTE_DEFAULTS);
   const [print, setPrint] = useState<PrintState>(INITIAL_PRINT);
+  const [rates, setRates] = useState<CostRates>(DEFAULT_RATES);
 
   const isBifold = family === "bifold";
   const isTote = family === "tote";
@@ -630,6 +635,60 @@ export default function App() {
         )}
 
         <fieldset className="group" style={{ border: 0, margin: 0, padding: 0 }}>
+          <legend>Maliyet</legend>
+          <p className="hint">
+            Alan ve süre kalıptan hesaplanıyor. Fiyatları sen giriyorsun —
+            deri ve işçilik ücretleri tabakhaneye, ülkeye ve aya göre
+            değişiyor, motor bunları bilemez.
+          </p>
+          {(
+            [
+              ["leatherPerDm2", "Deri", "/dm²", 0, 500, 5],
+              ["labourPerHour", "İşçilik", "/saat", 0, 2000, 25],
+              ["consumablesPerHour", "Sarf", "/saat", 0, 300, 5],
+              ["hardware", "Donanım", "toplam", 0, 2000, 25],
+            ] as const
+          ).map(([key, label, unit, min, max, step]) => (
+            <Slider
+              key={key}
+              label={`${label} (${unit})`}
+              value={rates[key]}
+              min={min}
+              max={max}
+              step={step}
+              onChange={(v) => setRates((p) => ({ ...p, [key]: v }))}
+            />
+          ))}
+          <Slider
+            label="Genel gider"
+            value={Math.round(rates.overheadRate * 100)}
+            min={0}
+            max={60}
+            step={5}
+            unit="%"
+            onChange={(v) => setRates((p) => ({ ...p, overheadRate: v / 100 }))}
+          />
+          <Slider
+            label="Kâr marjı"
+            value={Math.round(rates.marginRate * 100)}
+            min={0}
+            max={150}
+            step={5}
+            unit="%"
+            onChange={(v) => setRates((p) => ({ ...p, marginRate: v / 100 }))}
+          />
+          <Slider
+            label="KDV"
+            value={Math.round(rates.vatRate * 100)}
+            min={0}
+            max={30}
+            step={1}
+            unit="%"
+            onChange={(v) => setRates((p) => ({ ...p, vatRate: v / 100 }))}
+          />
+        </fieldset>
+
+        <fieldset className="group" style={{ border: 0, margin: 0, padding: 0 }}>
           <legend>Baskı</legend>
 
           <Choice<string>
@@ -757,7 +816,7 @@ export default function App() {
             </li>
           </ul>
         ) : (
-          <Result value={result.value} ctx={ctx} family={family} />
+          <Result value={result.value} ctx={ctx} family={family} rates={rates} />
         )}
       </main>
     </div>
@@ -768,10 +827,12 @@ function Result({
   value,
   ctx,
   family,
+  rates,
 }: {
   value: ReturnType<typeof generateCardHolder>;
   ctx: CardHolderParams | BifoldParams | (ToteParams & { kind: "canta" });
   family: FamilyId;
+  rates: CostRates;
 }) {
   const s = value.summary;
   const outer = value.pieces.find((p) => p.id === "outer");
@@ -836,6 +897,8 @@ function Result({
           <PieceView piece={piece} pxPerMm={PX_PER_MM} />
         </section>
       ))}
+
+      <CostPanel value={value} rates={rates} />
 
       <section className="steps">
         <h3>Yapım adımları</h3>
@@ -903,5 +966,120 @@ function Result({
         )}
       </div>
     </>
+  );
+}
+
+
+function CostPanel({
+  value,
+  rates,
+}: {
+  value: ReturnType<typeof generateCardHolder>;
+  rates: CostRates;
+}) {
+  const c = estimateCost(value, rates);
+  const notes = costNotes(c, rates);
+  const money = (n: number) => `${Math.round(n).toLocaleString("tr-TR")} ${c.currency}`;
+  const hours = (n: number) => `${n.toFixed(2)} sa`;
+
+  return (
+    <section className="cost">
+      <h3>Maliyet ve önerilen fiyat</h3>
+      <div className="cost-headline">
+        <span className="cost-price">{money(c.priceIncVat)}</span>
+        <span className="cost-sub">
+          KDV dahil · KDV hariç {money(c.priceExVat)} · maliyet {money(c.totalCost)}
+        </span>
+      </div>
+
+      <div className="columns">
+        <table className="readout">
+          <caption>Malzeme ve süre</caption>
+          <tbody>
+            <tr>
+              <th scope="row">net deri</th>
+              <td className="num">{c.netAreaDm2.toFixed(2)} dm²</td>
+            </tr>
+            <tr>
+              <th scope="row">fire dahil</th>
+              <td className="num">{c.grossAreaDm2.toFixed(2)} dm²</td>
+            </tr>
+            <tr>
+              <th scope="row">kesim</th>
+              <td className="num">{hours(c.cuttingHours)}</td>
+            </tr>
+            <tr>
+              <th scope="row">delme</th>
+              <td className="num">{hours(c.punchingHours)}</td>
+            </tr>
+            <tr>
+              <th scope="row">dikiş</th>
+              <td className="num">{hours(c.stitchingHours)}</td>
+            </tr>
+            <tr>
+              <th scope="row">kenar</th>
+              <td className="num">{hours(c.edgeHours)}</td>
+            </tr>
+            <tr>
+              <th scope="row">montaj</th>
+              <td className="num">{hours(c.assemblyHours)}</td>
+            </tr>
+            <tr>
+              <th scope="row">toplam</th>
+              <td className="num">{hours(c.totalHours)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table className="readout">
+          <caption>Fiyat zinciri</caption>
+          <tbody>
+            <tr>
+              <th scope="row">deri</th>
+              <td className="num">{money(c.leatherCost)}</td>
+            </tr>
+            <tr>
+              <th scope="row">işçilik</th>
+              <td className="num">{money(c.labourCost)}</td>
+            </tr>
+            <tr>
+              <th scope="row">sarf</th>
+              <td className="num">{money(c.consumablesCost)}</td>
+            </tr>
+            {c.hardwareCost > 0 && (
+              <tr>
+                <th scope="row">donanım</th>
+                <td className="num">{money(c.hardwareCost)}</td>
+              </tr>
+            )}
+            <tr>
+              <th scope="row">genel gider</th>
+              <td className="num">{money(c.overhead)}</td>
+            </tr>
+            <tr>
+              <th scope="row">maliyet</th>
+              <td className="num">{money(c.totalCost)}</td>
+            </tr>
+            <tr>
+              <th scope="row">kâr</th>
+              <td className="num">{money(c.margin)}</td>
+            </tr>
+            <tr>
+              <th scope="row">KDV</th>
+              <td className="num">{money(c.vat)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <ul className="diagnostics">
+        {notes.map((n, i) => (
+          <li key={i} className="diagnostic" data-severity={n.severity}>
+            <code>{n.severity === "warning" ? "DİKKAT" : "NOT"}</code>
+            <span>{n.message}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

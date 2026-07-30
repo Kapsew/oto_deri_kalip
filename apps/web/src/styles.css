@@ -634,3 +634,45 @@ button.fam-item:focus-visible {
   outline: 2px solid var(--chalk);
   outline-offset: -2px;
 }
+
+/* ── Maliyet ───────────────────────────────────────────────────────── */
+
+.cost {
+  margin-bottom: 32px;
+  max-width: 720px;
+}
+
+.cost h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.cost-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  padding: 14px 16px;
+  background: var(--mat);
+  border-left: 2px solid var(--brass);
+  margin-bottom: 18px;
+}
+
+.cost-price {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--bone-dim);
+}
+
+.diagnostic[data-severity="info"] {
+  border-left-color: var(--chalk);
+}

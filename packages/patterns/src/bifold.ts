@@ -74,7 +74,26 @@ export interface BifoldParams {
   readonly cornerRadius: Mm;
   readonly penAllowance: Mm;
   readonly pitch?: Mm;
+  /**
+   * HEDEF KAPALI ÖLÇÜ.
+   *
+   * Verilmezse ölçüler kısıtlardan türetilir (kart + banknot + paylar).
+   * Verilirse ölçü SABİTLENİR ve motor kısıtların sağlanıp sağlanmadığını
+   * raporlar. İkinci mod, "kapalı hâli 95 × 75mm olsun" gibi somut bir
+   * hedefle çalışırken gerekli — o hedefin fiziksel olarak mümkün olup
+   * olmadığını söylemek motorun işi.
+   */
+  readonly targetClosedWidth?: Mm;
+  readonly targetClosedHeight?: Mm;
 }
+
+/**
+ * Kartın yuvaya girip çıkabilmesi için gereken mutlak asgari boşluk.
+ *
+ * Belgelenmiş rahat değer 7.4mm (100mm bölme genişliğinden türetilmişti).
+ * 2mm altında kart sürtünmeden giremiyor ve deri kenarı zorlanıyor.
+ */
+export const MIN_CARD_CLEARANCE: Mm = 2;
 
 export const BIFOLD_DEFAULTS: BifoldParams = {
   cardSlotsPerSide: 3,
@@ -123,6 +142,8 @@ function tSlotShape(width: Mm, height: Mm, mouthHeight: Mm, sideInset: Mm): Poly
 export function generateBifold(params: BifoldParams): PatternResult {
   const diagnostics: Diagnostic[] = [];
   const n = Math.max(0, Math.floor(params.cardSlotsPerSide));
+  const targeted =
+    params.targetClosedWidth !== undefined || params.targetClosedHeight !== undefined;
 
   // --- Kart yuvaları (panel başına) -------------------------------------
   const slotGeo = cardSlotGeometry({
@@ -157,14 +178,94 @@ export function generateBifold(params: BifoldParams): PatternResult {
     stitchMargin: params.stitchMargin,
   });
 
-  const panelWidth = slotGeo.compartmentWidth;
-  const widthFromCards = 2 * panelWidth;
+  const derivedPanelWidth = slotGeo.compartmentWidth;
+  const widthFromCards = 2 * derivedPanelWidth;
   const widthFromBill = billGeo.compartmentWidth;
-  const openWidth = Math.max(widthFromCards, widthFromBill);
 
   const heightFromCards = slotGeo.stackHeight + 2 * params.stitchMargin;
-  const walletHeight = Math.max(heightFromCards, billGeo.minWalletHeight);
+  const derivedHeight = Math.max(heightFromCards, billGeo.minWalletHeight);
 
+  const panelWidth = params.targetClosedWidth ?? derivedPanelWidth;
+  const walletHeight = params.targetClosedHeight ?? derivedHeight;
+
+  if (targeted) {
+    // HEDEF MODDA KISITLARI RAPORLA.
+    //
+    // Ölçüyü sabitlemek kısıtları ortadan kaldırmıyor; yalnızca hangi
+    // kısıtın ne kadar zorlandığını görünür kılıyor. Sessizce ölçüyü
+    // değiştirmek de, kısıtı yok saymak da kullanıcıyı yanıltırdı.
+    const cardW = CARD_ID1.width;
+    const clearance = panelWidth - cardW - 2 * params.stitchMargin;
+    if (clearance < 0) {
+      diagnostics.push({
+        severity: "error",
+        code: "TARGET_TOO_NARROW",
+        message:
+          `Kapalı genişlik ${panelWidth}mm — kart ${cardW}mm ve iki yanda ` +
+          `${params.stitchMargin}mm dikiş payı toplam ` +
+          `${(cardW + 2 * params.stitchMargin).toFixed(1)}mm ediyor. Kart sığmıyor. ` +
+          `Dikiş payını düşür ya da genişliği en az ` +
+          `${(cardW + 2 * params.stitchMargin + MIN_CARD_CLEARANCE).toFixed(1)}mm yap.`,
+      });
+    } else if (clearance < MIN_CARD_CLEARANCE) {
+      diagnostics.push({
+        severity: "warning",
+        code: "TARGET_TIGHT_CARDS",
+        message:
+          `Kart boşluğu ${clearance.toFixed(1)}mm — asgari ${MIN_CARD_CLEARANCE}mm. ` +
+          `Kart zor girip çıkar. Dikiş payını ${params.stitchMargin}mm'den düşürmek ` +
+          `her 0.5mm'de 1mm boşluk kazandırır.`,
+      });
+    } else if (clearance < 5) {
+      diagnostics.push({
+        severity: "warning",
+        code: "TARGET_SNUG_CARDS",
+        message:
+          `Kart boşluğu ${clearance.toFixed(1)}mm — çalışır ama sıkı. ` +
+          `Rahat değer 7.4mm (belgelenmiş 100mm bölme genişliğinden).`,
+      });
+    }
+
+    const cover = walletHeight - billGeo.banknote.height;
+    if (cover < 0) {
+      diagnostics.push({
+        severity: "error",
+        code: "TARGET_TOO_SHORT",
+        message:
+          `Kapalı yükseklik ${walletHeight}mm — ${billGeo.banknote.label} ` +
+          `${billGeo.banknote.height}mm. Banknot cüzdandan taşar.`,
+      });
+    } else if (cover < 6) {
+      diagnostics.push({
+        severity: "warning",
+        code: "TARGET_LOW_COVER",
+        message:
+          `Banknot örtüsü ${cover.toFixed(1)}mm — önerilen 6mm. Para bölmenin ` +
+          `ağzından görünür ve kenarları yıpranır. Daha küçük kupür ` +
+          `hedefliyorsan sorun değil.`,
+      });
+    }
+
+    const stackRoom = walletHeight - 2 * params.stitchMargin;
+    if (slotGeo.stackHeight > stackRoom) {
+      const maxReveal =
+        n > 1 ? (stackRoom - CARD_ID1.height) / (n - 1) : Number.POSITIVE_INFINITY;
+      diagnostics.push({
+        severity: "error",
+        code: "TARGET_SLOTS_OVERFLOW",
+        message:
+          `${n} yuva ${slotGeo.stackHeight.toFixed(1)}mm yer istiyor, ` +
+          `${stackRoom.toFixed(1)}mm var. Kademeyi en fazla ` +
+          `${maxReveal.toFixed(1)}mm yap ya da yuva sayısını azalt.`,
+      });
+    }
+  }
+
+  const openWidth = targeted ? 2 * panelWidth : Math.max(widthFromCards, widthFromBill);
+
+  // Hedef modda banknot kontrolü TARGET_LOW_COVER ile zaten yapılıyor.
+  // İkisini birden çalıştırmak aynı şey için hem hata hem uyarı üretir;
+  // üstelik hedef ölçü bilinçli bir tercih, "hata" demek doğru değil.
   for (const d of validateBillPocket(
     {
       currency: params.currency,
@@ -173,6 +274,7 @@ export function generateBifold(params: BifoldParams): PatternResult {
     },
     walletHeight,
   )) {
+    if (targeted && d.code === "BILL_STICKS_OUT") continue;
     diagnostics.push({ severity: d.severity, code: d.code, message: d.message });
   }
 
@@ -423,7 +525,7 @@ export function generateBifold(params: BifoldParams): PatternResult {
     });
   }
 
-  if (widthFromBill > widthFromCards) {
+  if (!targeted && widthFromBill > widthFromCards) {
     diagnostics.push({
       severity: "warning",
       code: "WIDTH_FROM_BILL",
@@ -456,10 +558,14 @@ export function generateBifold(params: BifoldParams): PatternResult {
     foldAllowance,
     panelHeight: walletHeight,
     totalHoles: outerPlan.totalHoles,
+    stitchedHoles: outerPlan.totalHoles,
     pitch: outerPlan.pitch,
     fitsA4,
     metrics: [
-      { label: "panel genişliği", value: `${panelWidth.toFixed(1)} mm` },
+      {
+        label: "kapalı ölçü",
+        value: `${panelWidth.toFixed(1)} × ${walletHeight.toFixed(1)} mm`,
+      },
       { label: "açık ölçü", value: `${outerBox.width.toFixed(1)} × ${outerBox.height.toFixed(1)} mm` },
       { label: "kat payı", value: `${foldAllowance.toFixed(2)} mm` },
       { label: "boş kalınlık", value: `${closedThickness.toFixed(2)} mm` },

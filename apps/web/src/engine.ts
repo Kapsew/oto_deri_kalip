@@ -20,6 +20,9 @@ export {
   generateTote,
   STRAP_SPECS,
   TOTE_DEFAULTS,
+  DEFAULT_RATES,
+  costNotes,
+  estimateCost,
 } from "@odk/patterns";
 
 export { stitchSummary as stitchSummaryFor } from "@odk/geometry";
