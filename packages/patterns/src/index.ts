@@ -7,3 +7,4 @@
 export * from "./material.js";
 export * from "./crosssection.js";
 export * from "./cardslot.js";
+export * from "./cardholder.js";

@@ -1,0 +1,407 @@
+/*
+  TASARIM NOTU
+  ────────────────────────────────────────────────────────────────────
+  Bu bir alet, tanıtım sayfası değil. Palet konunun kendi dünyasından:
+  deri işçisinin gün boyu baktığı şey kesim matı. Koyu yeşil mat, üstünde
+  bone beyazı kesim hatları, pirinç renginde dikiş delikleri.
+
+  Mat ızgarası süs değil ÖLÇÜM ARACI: 10mm aralıklı, kalın çizgiler 50mm.
+  Yani ekrandaki ızgara, kullanıcının masasındaki matın aynısı ve ölçek
+  referansı olarak okunabiliyor.
+
+  Tipografi: her sayı monospace (IBM Plex Mono) — ölçüler hizalanmalı ve
+  rakamlar eşit genişlikte olmalı ki 93.4 ile 103.4 yan yana okunabilsin.
+  Etiketler condensed sans, çünkü dar kontrol rayında yer dar.
+*/
+
+:root {
+  --mat: #14312b;
+  --mat-deep: #0e2420;
+  --mat-grid: #1d443b;
+  --mat-grid-major: #2a5f52;
+
+  --panel: #0b1c19;
+  --panel-edge: #1c3a34;
+
+  --bone: #f2efe6;
+  --bone-dim: #a8b5ae;
+  --bone-faint: #6d8079;
+
+  --brass: #e0a458;
+  --brass-dim: #8a6535;
+  --chalk: #6fb3a0;
+
+  --warn: #d9973f;
+  --error: #d9634f;
+
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  --sans: "IBM Plex Sans Condensed", system-ui, -apple-system, sans-serif;
+
+  --rail: 320px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--panel);
+  color: var(--bone);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100vh;
+}
+
+/* ── Kabuk ─────────────────────────────────────────────────────────── */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail) 1fr;
+  min-height: 100vh;
+}
+
+.rail {
+  background: var(--panel);
+  border-right: 1px solid var(--panel-edge);
+  padding: 20px 18px 40px;
+  overflow-y: auto;
+}
+
+.stage {
+  background: var(--mat-deep);
+  padding: 20px 24px 60px;
+  overflow-x: auto;
+}
+
+@media (max-width: 860px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .rail {
+    border-right: none;
+    border-bottom: 1px solid var(--panel-edge);
+  }
+}
+
+/* ── Başlık ────────────────────────────────────────────────────────── */
+
+.masthead {
+  margin-bottom: 26px;
+}
+
+.masthead h1 {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0 0 4px;
+}
+
+.masthead p {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--bone-faint);
+  margin: 0;
+}
+
+/* ── Kontroller ────────────────────────────────────────────────────── */
+
+.group {
+  margin-bottom: 22px;
+}
+
+.group > legend,
+.group-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bone-faint);
+  margin: 0 0 10px;
+  padding: 0;
+  display: block;
+}
+
+.field {
+  margin-bottom: 14px;
+}
+
+.field-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+
+.field-head label {
+  font-size: 13px;
+  color: var(--bone-dim);
+}
+
+.field-value {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--bone);
+}
+
+input[type="range"] {
+  width: 100%;
+  height: 20px;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--panel-edge);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: var(--panel-edge);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  margin-top: -5.5px;
+  background: var(--brass);
+  border: none;
+  border-radius: 0;
+  transform: rotate(45deg);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  background: var(--brass);
+  border: none;
+  border-radius: 0;
+}
+
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--chalk);
+  outline-offset: 4px;
+}
+
+.segmented {
+  display: flex;
+  gap: 1px;
+  background: var(--panel-edge);
+  border: 1px solid var(--panel-edge);
+}
+
+.segmented button {
+  flex: 1;
+  background: var(--panel);
+  color: var(--bone-dim);
+  border: none;
+  padding: 7px 4px;
+  font-family: var(--sans);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--brass);
+  color: var(--mat-deep);
+  font-weight: 600;
+}
+
+.segmented button:focus-visible {
+  outline: 2px solid var(--chalk);
+  outline-offset: -2px;
+}
+
+.hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--bone-faint);
+  margin: 5px 0 0;
+}
+
+/* ── Tanılama ──────────────────────────────────────────────────────── */
+
+.diagnostics {
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.diagnostic {
+  display: flex;
+  gap: 9px;
+  padding: 9px 11px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  background: var(--panel);
+  border-left: 2px solid var(--bone-faint);
+}
+
+.diagnostic[data-severity="warning"] {
+  border-left-color: var(--warn);
+}
+
+.diagnostic[data-severity="error"] {
+  border-left-color: var(--error);
+}
+
+.diagnostic code {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--bone-faint);
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
+/* ── Sahne ─────────────────────────────────────────────────────────── */
+
+.stage-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  align-items: baseline;
+  margin-bottom: 16px;
+}
+
+.stage-head h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+.scale-note {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--bone-faint);
+}
+
+.piece {
+  margin-bottom: 30px;
+}
+
+.piece-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.piece-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.piece-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--bone-dim);
+}
+
+.piece-canvas {
+  background: var(--mat);
+  border: 1px solid var(--mat-grid-major);
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* ── Tablolar ──────────────────────────────────────────────────────── */
+
+.readout {
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-bottom: 26px;
+  min-width: 260px;
+}
+
+.readout caption {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bone-faint);
+  text-align: left;
+  padding-bottom: 8px;
+}
+
+.readout th,
+.readout td {
+  text-align: left;
+  padding: 5px 22px 5px 0;
+  border-bottom: 1px solid var(--panel-edge);
+  font-weight: 400;
+}
+
+.readout th {
+  color: var(--bone-faint);
+}
+
+.readout td {
+  color: var(--bone);
+  font-variant-numeric: tabular-nums;
+}
+
+.readout td.num {
+  text-align: right;
+  padding-right: 0;
+}
+
+.columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 48px;
+}
+
+/* ── Açıklama ──────────────────────────────────────────────────────── */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--bone-dim);
+  margin-bottom: 18px;
+}
+
+.legend span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.swatch {
+  width: 20px;
+  height: 0;
+  border-top-width: 2px;
+  border-top-style: solid;
+}
+
+.swatch.dot {
+  width: 7px;
+  height: 7px;
+  border: none;
+  border-radius: 50%;
+  background: var(--brass);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
