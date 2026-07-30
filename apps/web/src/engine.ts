@@ -23,6 +23,7 @@ export {
   DEFAULT_RATES,
   costNotes,
   estimateCost,
+  DEFAULT_TIME_MODEL,
 } from "@odk/patterns";
 
 export { stitchSummary as stitchSummaryFor } from "@odk/geometry";

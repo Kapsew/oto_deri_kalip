@@ -77,12 +77,8 @@ describe("süre modeli", () => {
   });
 
   it("delik başına adım artınca dikiş süresi düşüyor", () => {
-    const fine = estimateCost(
-      generateBifold({ ...BIFOLD_DEFAULTS, pitch: 3 }),
-    );
-    const coarse = estimateCost(
-      generateBifold({ ...BIFOLD_DEFAULTS, pitch: 5 }),
-    );
+    const fine = estimateCost(generateBifold({ ...BIFOLD_DEFAULTS, pitch: 3 }));
+    const coarse = estimateCost(generateBifold({ ...BIFOLD_DEFAULTS, pitch: 5 }));
     expect(coarse.stitchingHours).toBeLessThan(fine.stitchingHours);
   });
 });
@@ -145,5 +141,57 @@ describe("uyarı notları", () => {
       estimateCost(wallet95, { ...DEFAULT_RATES, leatherPerDm2: 1 }),
     );
     expect(notes.some((n) => n.message.includes("işçilik"))).toBe(true);
+  });
+});
+
+
+describe("süre ayarlanabilirliği", () => {
+  const base = estimateCost(wallet95);
+
+  it("hız katsayısı tüm süreleri ölçekliyor", () => {
+    const fast = estimateCost(wallet95, DEFAULT_RATES, { speedFactor: 0.5 });
+    expect(fast.totalHours).toBeCloseTo(base.totalHours * 0.5, 6);
+    expect(fast.stitchingHours).toBeCloseTo(base.stitchingHours * 0.5, 6);
+    expect(fast.cuttingHours).toBeCloseTo(base.cuttingHours * 0.5, 6);
+  });
+
+  it("hız katsayısı fiyatı düşürüyor ama sıfırlamıyor (deri sabit)", () => {
+    const fast = estimateCost(wallet95, DEFAULT_RATES, { speedFactor: 0.5 });
+    expect(fast.priceExVat).toBeLessThan(base.priceExVat);
+    expect(fast.leatherCost).toBeCloseTo(base.leatherCost, 6);
+  });
+
+  it("elle verilen toplam süre kullanılıyor", () => {
+    const manual = estimateCost(wallet95, DEFAULT_RATES, { overrideTotalHours: 2 });
+    expect(manual.totalHours).toBe(2);
+    expect(manual.hoursOverridden).toBe(true);
+    expect(manual.modelHours).toBeCloseTo(base.totalHours, 6);
+  });
+
+  it("elle verilen toplamda döküm hâlâ toplamı tutuyor", () => {
+    // Bileşenler oranlanmazsa tablo kendi kendisiyle çelişirdi.
+    const m = estimateCost(wallet95, DEFAULT_RATES, { overrideTotalHours: 2 });
+    expect(
+      m.cuttingHours + m.punchingHours + m.stitchingHours + m.edgeHours + m.assemblyHours,
+    ).toBeCloseTo(2, 6);
+  });
+
+  it("delik hızını artırmak dikişi kısaltıyor", () => {
+    const quick = estimateCost(wallet95, DEFAULT_RATES, {
+      time: { ...DEFAULT_TIME_MODEL, holesPerHour: 100 },
+    });
+    expect(quick.stitchingHours).toBeCloseTo(base.stitchingHours / 2, 6);
+  });
+
+  it("fire katsayısı deri maliyetini değiştiriyor", () => {
+    const tight = estimateCost(wallet95, DEFAULT_RATES, { wasteFactor: 1.1 });
+    expect(tight.leatherCost).toBeLessThan(base.leatherCost);
+  });
+
+  it("elle süre verilince not değişiyor", () => {
+    const m = estimateCost(wallet95, DEFAULT_RATES, { overrideTotalHours: 2 });
+    const notes = costNotes(m);
+    expect(notes.some((n) => n.message.includes("elle"))).toBe(true);
+    expect(notes.some((n) => n.message.includes("GEÇİCİ"))).toBe(false);
   });
 });
