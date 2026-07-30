@@ -14,7 +14,11 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/clipper-lib": "6.4.0",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "clipper-lib": "6.4.2"
   }
 }
