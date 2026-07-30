@@ -124,7 +124,37 @@ describe("selectPitch — minimax", () => {
     expect(IRON_PITCHES).toContain(selectPitch(spans));
   });
 
-  it("en kötü segmentteki sapmayı küçültüyor: hiçbir aday daha iyi değil", () => {
+  it("sapmalar ayırt edilemez olduğunda EN BÜYÜK adımı seçiyor", () => {
+    // Gerçek çıktıdan gelen vaka: 559.2mm çevre, tüm adaylar 0.01mm
+    // altında sapma veriyor. Sadece sapmaya bakan seçim 2.7mm (207
+    // delik) seçiyordu; 3.85mm ile 145 delik çıkıyor ve fark ölçülemez.
+    const spans = [{ startDistance: 0, endDistance: 559.2, length: 559.2 }];
+    const chosen = selectPitch(spans);
+    expect(chosen).toBe(5.0);
+
+    // Tüm adayların sapması gerçekten ihmal edilebilir mi?
+    for (const p of IRON_PITCHES) {
+      const n = Math.round(559.2 / p);
+      expect(Math.abs(559.2 / n - p)).toBeLessThan(0.01);
+    }
+  });
+
+  it("sapma bandın dışındaysa büyük adım seçilmiyor", () => {
+    // 43mm kenarda adımlar arasında gerçek fark var; burada kalite
+    // emekten önce gelir.
+    const spans = [{ startDistance: 0, endDistance: 43, length: 43 }];
+    const chosen = selectPitch(spans, [3.85, 5.0]);
+    const dev = (p: number) => Math.abs(43 / Math.round(43 / p) - p);
+    expect(dev(chosen)).toBeLessThanOrEqual(
+      Math.min(dev(3.85), dev(5.0)) + 0.05,
+    );
+  });
+
+  it("boş aday listesi hata", () => {
+    expect(() => selectPitch([{ startDistance: 0, endDistance: 10, length: 10 }], [])).toThrow();
+  });
+
+  it("en kötü segmentteki sapmayı bant içinde tutuyor", () => {
     const spans = [
       { startDistance: 0, endDistance: 93, length: 93 },
       { startDistance: 93, endDistance: 136, length: 43 },
@@ -141,9 +171,8 @@ describe("selectPitch — minimax", () => {
       );
     }
     const chosenWorst = worstFor(chosen);
-    for (const p of IRON_PITCHES) {
-      expect(worstFor(p)).toBeGreaterThanOrEqual(chosenWorst - 1e-9);
-    }
+    const bestWorst = Math.min(...IRON_PITCHES.map(worstFor));
+    expect(chosenWorst).toBeLessThanOrEqual(bestWorst + 0.05);
   });
 });
 
@@ -262,5 +291,13 @@ describe("stitchSummary", () => {
     expect(lines).toHaveLength(4);
     expect(lines[0]).toContain("1. kenar");
     expect(lines[0]).toContain("25 aralık");
+  });
+
+  it("tek segmentte \"çevre\" diyor, \"1. kenar\" demiyor", () => {
+    const rounded = roundCorners(R100x50, true, { radius: 5, arcSegments: 12 });
+    const lines = stitchSummary(distributeStitches(rounded, true, { pitch: 4 }));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("çevre");
+    expect(lines[0]).not.toContain("kenar");
   });
 });

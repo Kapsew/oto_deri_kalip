@@ -96,32 +96,55 @@ function fitSpan(length: Mm, pitch: Mm): { intervals: number; actualPitch: Mm } 
 }
 
 /**
- * Aday adımlar arasından, en kötü segmentteki sapmayı en küçük yapanı seçer.
- * Eşitlikte daha büyük adım tercih edilir (daha az delik, daha az emek).
+ * Sapma farkının anlamsız sayıldığı bant.
+ *
+ * 0.05mm, baskı hassasiyetimizle ve el kesim hata payıyla aynı
+ * mertebede. Bu bandın içindeki iki adım fiziksel olarak ayırt
+ * edilemez, dolayısıyla aralarında sapmaya bakarak seçim yapmak
+ * anlamsızdır.
+ */
+export const PITCH_TIE_BAND: Mm = 0.05;
+
+/**
+ * Aday adımlar arasından seçim.
+ *
+ * İKİ AŞAMALI, ÇÜNKÜ TEK ÖLÇÜT YETMİYOR:
+ *
+ * Önce en kötü segmentteki sapmayı en küçük yapan adım bulunur. Sonra
+ * bu değerin PITCH_TIE_BAND kadar yakınındaki TÜM adaylar arasından
+ * EN BÜYÜĞÜ seçilir.
+ *
+ * NEDEN: ilk sürümde yalnızca sapma minimize ediliyordu ve gerçek bir
+ * çıktıda 559.2mm'lik bir çevre için 2.7mm adım seçildi — 207 delik.
+ * Oysa adayların hepsi 0.01mm'nin altında sapma veriyordu; 3.85mm ile
+ * 145 delik çıkıyordu. Yani algoritma ölçülemeyecek kadar küçük bir
+ * "kazanç" için kullanıcıya 62 fazla delik deldiriyordu.
+ *
+ * Uzun kenarlarda neredeyse her adım küçük sapma verir; ölçüt
+ * dejenere olur ve seçim rastgeleye döner. Bant, o durumda emeği
+ * azaltan tarafa karar verir.
  */
 export function selectPitch(
   spans: readonly Span[],
   candidates: readonly Mm[] = IRON_PITCHES,
 ): Mm {
-  let best: Mm | undefined;
-  let bestWorst = Infinity;
+  if (candidates.length === 0) {
+    throw new Error("selectPitch: aday adım listesi boş.");
+  }
 
-  for (const pitch of candidates) {
+  const scored = candidates.map((pitch) => {
     let worst = 0;
     for (const span of spans) {
       const { actualPitch } = fitSpan(span.length, pitch);
       worst = Math.max(worst, Math.abs(actualPitch - pitch));
     }
-    if (
-      worst < bestWorst - 1e-9 ||
-      (Math.abs(worst - bestWorst) <= 1e-9 && best !== undefined && pitch > best)
-    ) {
-      bestWorst = worst;
-      best = pitch;
-    }
-  }
+    return { pitch, worst };
+  });
 
-  return best ?? (candidates[0] as Mm);
+  const bestWorst = Math.min(...scored.map((s) => s.worst));
+  const acceptable = scored.filter((s) => s.worst <= bestWorst + PITCH_TIE_BAND);
+
+  return acceptable.reduce((a, b) => (b.pitch > a.pitch ? b : a)).pitch;
 }
 
 /**
@@ -237,11 +260,15 @@ function makeHole(
  * daha kullanışlı ve daha hassas. Bu fonksiyon o metni üretir.
  */
 export function stitchSummary(plan: StitchPlan): string[] {
+  // Köşesi yuvarlatılmış kapalı bir hatta tek segment kalır; ona
+  // "1. kenar" demek yanıltıcı olur, o segment çevrenin tamamıdır.
+  const singleClosed = plan.spans.length === 1;
+
   return plan.spans.map((s) => {
-    const holes = s.intervals;
+    const label = singleClosed ? "çevre" : `${s.index + 1}. kenar`;
     return (
-      `${s.index + 1}. kenar: ${s.length.toFixed(1)}mm, ` +
-      `${holes} aralık, gerçek adım ${s.actualPitch.toFixed(2)}mm` +
+      `${label}: ${s.length.toFixed(1)}mm, ` +
+      `${s.intervals} aralık, gerçek adım ${s.actualPitch.toFixed(2)}mm` +
       (s.deviation > 0.05 ? ` (sapma ${s.deviation.toFixed(2)}mm)` : "")
     );
   });

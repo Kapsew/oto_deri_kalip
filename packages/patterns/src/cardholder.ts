@@ -62,6 +62,17 @@ export const DEFAULT_PARAMS: CardHolderParams = {
   stitchMargin: 3.5,
   cornerRadius: 4,
   penAllowance: 0.3,
+  /**
+   * Varsayılan 3.85mm.
+   *
+   * Otomatik seçime BIRAKILMIYOR: kullanıcının elinde belirli bir
+   * pricking iron var ve hangi adımı kullanacağını motor bilemez.
+   * Otomatik seçim yalnızca sapmayı ölçebilir; dikişin ne kadar sık
+   * görüneceği estetik bir karar ve kullanıcıya ait.
+   *
+   * 3.85mm küçük deri ürünlerinde en yaygın adım.
+   */
+  pitch: 3.85,
 };
 
 export type PieceKind = "outer" | "slot-rect" | "slot-t";

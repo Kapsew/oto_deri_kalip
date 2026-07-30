@@ -114,6 +114,38 @@ const INITIAL_PRINT: PrintState = {
   busy: false,
 };
 
+interface SelectProps {
+  label: string;
+  value: string;
+  options: readonly { value: string; label: string }[];
+  hint?: string;
+  onChange: (v: string) => void;
+}
+
+function Select({ label, value, options, hint, onChange }: SelectProps) {
+  const id = `s-${label.replace(/\s/g, "-")}`;
+  return (
+    <div className="field">
+      <div className="field-head">
+        <label htmlFor={id}>{label}</label>
+      </div>
+      <select
+        id={id}
+        className="dropdown"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      {hint !== undefined && <p className="hint">{hint}</p>}
+    </div>
+  );
+}
+
 export default function App() {
   const [params, setParams] = useState<CardHolderParams>(DEFAULT_PARAMS);
   const [print, setPrint] = useState<PrintState>(INITIAL_PRINT);
@@ -212,6 +244,29 @@ export default function App() {
 
         <fieldset className="group" style={{ border: 0, margin: 0, padding: 0 }}>
           <legend>Dikiş ve kesim</legend>
+          <Select
+            label="Pricking iron"
+            value={params.pitch === undefined ? "auto" : String(params.pitch)}
+            options={[
+              { value: "2.7", label: "2.7 mm" },
+              { value: "3", label: "3.0 mm" },
+              { value: "3.38", label: "3.38 mm" },
+              { value: "3.85", label: "3.85 mm" },
+              { value: "4", label: "4.0 mm" },
+              { value: "5", label: "5.0 mm" },
+              { value: "auto", label: "Oto — en az delik" },
+            ]}
+            hint="Elindeki takımın adımını seç. Oto yalnızca sapmayı ölçebilir, dikişin sıklığı senin kararın."
+            onChange={(v) =>
+              setParams((p) => {
+                if (v === "auto") {
+                  const { pitch: _drop, ...rest } = p;
+                  return rest;
+                }
+                return { ...p, pitch: Number(v) };
+              })
+            }
+          />
           <Slider
             label="Dikiş payı"
             value={params.stitchMargin}
