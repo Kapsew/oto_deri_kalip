@@ -20,8 +20,8 @@ import {
 } from "./material.js";
 import type { SlotConstruction } from "./cardslot.js";
 import { T_SLOT_WRAP_ALLOWANCE, cardSlotGeometry, validateCardSlots } from "./cardslot.js";
-import type { SlotShapeId } from "./slotshape.js";
-import { slotShapePath } from "./slotshape.js";
+import type { NormPoint, SlotShapeId } from "./slotshape.js";
+import { customMouthPath, slotShapePath } from "./slotshape.js";
 import { projectAcrossFold, projectStitchPlan } from "./stitchprojection.js";
 import type { Currency } from "./banknote.js";
 import { billPocketGeometry, validateBillPocket } from "./banknote.js";
@@ -83,6 +83,12 @@ export interface BifoldParams {
    * dibi kapatan düz dikdörtgen kalır.
    */
   readonly slotShape?: SlotShapeId;
+  /**
+   * Kullanıcının çizdiği ağız profili (normalize noktalar). Verilirse üst
+   * yuvaların ağzı bundan üretilir ve slotShape yok sayılır. Yalnızca yerel
+   * biçim; gövde/kesit/kalınlık yine hesaplanır. Geçersizse düz t-slot'a düşer.
+   */
+  readonly customMouth?: readonly NormPoint[];
   /**
    * HEDEF KAPALI ÖLÇÜ.
    *
@@ -443,15 +449,20 @@ export function generateBifold(params: BifoldParams): PatternResult {
     sideInset,
   };
   // En alttaki yuva (dibi kapatan) her zaman düz dikdörtgen; üst yuvaların
-  // ağzı kullanıcının seçtiği şekil (verilmezse "t-slot" = mevcut çıktı).
+  // ağzı kullanıcının seçtiği şekil ya da çizdiği profil (verilmezse
+  // "t-slot" = mevcut çıktı).
   const upperShape: SlotShapeId = params.slotShape ?? "t-slot";
+  const upperOutline =
+    params.customMouth !== undefined
+      ? customMouthPath(params.customMouth, slotDims)
+      : slotShapePath(upperShape, slotDims);
   const rectShape = roundCorners(
     slotShapePath("duz", slotDims),
     true,
     { radius: Math.min(params.cornerRadius, slotPieceHeight / 4) },
   );
   const tShape = roundCorners(
-    slotShapePath(upperShape, slotDims),
+    upperOutline,
     true,
     { radius: Math.min(params.cornerRadius, sideInset / 2) },
   );

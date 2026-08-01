@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import type { Vec } from "@odk/geometry";
 import { bbox, flattenPath, path, vec } from "@odk/geometry";
-import { SLOT_SHAPES, slotShapePath } from "./slotshape.js";
+import {
+  DEFAULT_CUSTOM_MOUTH,
+  SLOT_SHAPES,
+  customMouthPath,
+  slotShapePath,
+  validateCustomMouth,
+} from "./slotshape.js";
 import { BIFOLD_DEFAULTS, generateBifold } from "./bifold.js";
 
 const dims = { width: 100, height: 58, mouthHeight: 12, sideInset: 6.5 };
@@ -123,6 +129,105 @@ describe("bifold — slotShape YALNIZCA yerel şekli değiştirir", () => {
 
   it("hata üretmiyor", () => {
     expect(shaped.diagnostics.filter((d) => d.severity === "error")).toHaveLength(
+      0,
+    );
+  });
+});
+
+describe("validateCustomMouth — profil geçerliliği", () => {
+  it("varsayılan profil geçerli", () => {
+    expect(validateCustomMouth(DEFAULT_CUSTOM_MOUTH).ok).toBe(true);
+  });
+
+  it("2'den az nokta reddedilir", () => {
+    const r = validateCustomMouth([{ u: 0, v: 0 }]);
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("MOUTH_TOO_FEW");
+  });
+
+  it("uç noktalar köşede değilse reddedilir", () => {
+    const r = validateCustomMouth([
+      { u: 0.2, v: 0 },
+      { u: 1, v: 0 },
+    ]);
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("MOUTH_ENDPOINTS");
+  });
+
+  it("soldan sağa sıralı değilse reddedilir (kendini keser)", () => {
+    const r = validateCustomMouth([
+      { u: 0, v: 0 },
+      { u: 0.7, v: 0.5 },
+      { u: 0.3, v: 0.5 },
+      { u: 1, v: 0 },
+    ]);
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("MOUTH_NOT_MONOTONIC");
+  });
+
+  it("kutu dışına taşan nokta reddedilir", () => {
+    const r = validateCustomMouth([
+      { u: 0, v: 0 },
+      { u: 0.5, v: 1.4 },
+      { u: 1, v: 0 },
+    ]);
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("MOUTH_OUT_OF_BOUNDS");
+  });
+});
+
+describe("customMouthPath — çizilen profil geçerli hat üretir", () => {
+  it("varsayılan profil: kapalı, alanı pozitif, sınır içinde", () => {
+    const poly = customMouthPath(DEFAULT_CUSTOM_MOUTH, dims);
+    expect(poly.length).toBeGreaterThanOrEqual(4);
+    expect(area(poly)).toBeGreaterThan(0);
+    const b = bbox(poly);
+    expect(b.min.x).toBeGreaterThanOrEqual(-1e-6);
+    expect(b.min.y).toBeGreaterThanOrEqual(-1e-6);
+    expect(b.max.x).toBeLessThanOrEqual(dims.width + 1e-6);
+    expect(b.max.y).toBeLessThanOrEqual(dims.height + 1e-6);
+  });
+
+  it("geçersiz profil düz t-slot'a düşer (motor kırılmaz)", () => {
+    const bad = customMouthPath([{ u: 0, v: 0 }], dims);
+    expect(bad).toEqual(slotShapePath("t-slot", dims));
+  });
+});
+
+describe("bifold — customMouth YALNIZCA yerel şekli değiştirir", () => {
+  const base = generateBifold(BIFOLD_DEFAULTS);
+  const drawn = generateBifold({
+    ...BIFOLD_DEFAULTS,
+    customMouth: [
+      { u: 0, v: 0 },
+      { u: 0.5, v: 0.7 },
+      { u: 1, v: 0 },
+    ],
+  });
+
+  it("özet metrikleri değişmez", () => {
+    expect(drawn.summary.foldAllowance).toBeCloseTo(base.summary.foldAllowance, 9);
+    expect(drawn.summary.outerFlatWidth).toBeCloseTo(
+      base.summary.outerFlatWidth,
+      9,
+    );
+    expect(drawn.summary.closedThickness).toBeCloseTo(
+      base.summary.closedThickness,
+      9,
+    );
+  });
+
+  it("parça kodları aynı ama üst yuva hattı farklı", () => {
+    expect(drawn.pieces.map((p) => p.code)).toEqual(
+      base.pieces.map((p) => p.code),
+    );
+    const baseD = base.pieces.find((p) => p.code === "D-S2");
+    const drawnD = drawn.pieces.find((p) => p.code === "D-S2");
+    expect(drawnD?.cutLine).not.toEqual(baseD?.cutLine);
+  });
+
+  it("hata üretmiyor", () => {
+    expect(drawn.diagnostics.filter((d) => d.severity === "error")).toHaveLength(
       0,
     );
   });

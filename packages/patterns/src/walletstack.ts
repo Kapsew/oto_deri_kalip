@@ -12,7 +12,7 @@ import {
 } from "./material.js";
 import type { BifoldParams } from "./bifold.js";
 import type { PatternResult } from "./cardholder.js";
-import type { SlotShapeId } from "./slotshape.js";
+import type { NormPoint, SlotShapeId } from "./slotshape.js";
 import { BIFOLD_DEFAULTS, generateBifold } from "./bifold.js";
 
 /**
@@ -84,6 +84,8 @@ export interface WalletStackSettings {
   readonly pitch?: Mm;
   /** Üst yuvaların ağız şekli. Verilmezse t-slot (düz ağız). */
   readonly slotShape?: SlotShapeId;
+  /** Kullanıcının çizdiği ağız profili. Verilirse slotShape yerine geçer. */
+  readonly customMouth?: readonly NormPoint[] | undefined;
 }
 
 /**
@@ -150,6 +152,7 @@ export function compileToBifoldParams(stack: WalletStack): BifoldParams {
     penAllowance: s.penAllowance,
     ...(s.pitch === undefined ? {} : { pitch: s.pitch }),
     ...(s.slotShape === undefined ? {} : { slotShape: s.slotShape }),
+    ...(s.customMouth === undefined ? {} : { customMouth: s.customMouth }),
   };
 }
 

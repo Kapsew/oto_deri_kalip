@@ -32,6 +32,8 @@ export {
   stackContributions,
   validateStack,
   SLOT_SHAPES,
+  DEFAULT_CUSTOM_MOUTH,
+  validateCustomMouth,
 } from "@odk/patterns";
 
 export { stitchSummary as stitchSummaryFor } from "@odk/geometry";

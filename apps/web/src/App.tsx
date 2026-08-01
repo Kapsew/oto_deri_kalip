@@ -10,6 +10,7 @@ import type {
   SlotConstruction,
   WalletStack,
   SlotShapeId,
+  NormPoint,
 } from "@odk/patterns";
 import {
   BANKNOTES,
@@ -37,11 +38,13 @@ import {
   stackContributions,
   validateStack,
   SLOT_SHAPES,
+  DEFAULT_CUSTOM_MOUTH,
 } from "./engine.js";
 import type { CostOptions, CostRates } from "@odk/patterns";
 
 type FamilyId = "card-holder-fold" | "bifold" | "tote";
 import { PieceView } from "./PieceView.js";
+import { MouthEditor } from "./MouthEditor.js";
 
 /**
  * PDF katmanı DİNAMİK yükleniyor.
@@ -373,22 +376,53 @@ export default function App() {
               hint="T-slot kenarı sabit tutar; düz yuvalar kenarda birikir."
             />
             {stack.settings.construction === "t-slot" && (
-              <Select
-                label="Soket ağzı"
-                value={stack.settings.slotShape ?? "t-slot"}
-                options={SLOT_SHAPES.map((s) => ({
-                  value: s.id,
-                  label: s.name,
-                }))}
-                onChange={(v) =>
-                  setStackSetting("slotShape", v as SlotShapeId)
-                }
-                hint={
-                  SLOT_SHAPES.find(
-                    (s) => s.id === (stack.settings.slotShape ?? "t-slot"),
-                  )?.summary ?? ""
-                }
-              />
+              <>
+                <Select
+                  label="Soket ağzı"
+                  value={
+                    stack.settings.customMouth
+                      ? "ozel"
+                      : (stack.settings.slotShape ?? "t-slot")
+                  }
+                  options={[
+                    ...SLOT_SHAPES.map((s) => ({
+                      value: s.id,
+                      label: s.name,
+                    })),
+                    { value: "ozel", label: "Özel (çiz)" },
+                  ]}
+                  onChange={(v) => {
+                    if (v === "ozel") {
+                      setStackSetting("customMouth", [...DEFAULT_CUSTOM_MOUTH]);
+                    } else {
+                      setStack((s) => ({
+                        ...s,
+                        settings: {
+                          ...s.settings,
+                          slotShape: v as SlotShapeId,
+                          customMouth: undefined,
+                        },
+                      }));
+                    }
+                  }}
+                  hint={
+                    stack.settings.customMouth
+                      ? "Kendi ağız profilini aşağıdan çiz."
+                      : (SLOT_SHAPES.find(
+                          (s) =>
+                            s.id === (stack.settings.slotShape ?? "t-slot"),
+                        )?.summary ?? "")
+                  }
+                />
+                {stack.settings.customMouth && (
+                  <MouthEditor
+                    value={stack.settings.customMouth}
+                    onChange={(pts: NormPoint[]) =>
+                      setStackSetting("customMouth", pts)
+                    }
+                  />
+                )}
+              </>
             )}
             <Slider
               label="Kademe (reveal)"
