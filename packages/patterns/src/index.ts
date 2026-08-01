@@ -15,3 +15,4 @@ export * from "./catalog.js";
 export * from "./costing.js";
 export * from "./instructions.js";
 export * from "./stitchprojection.js";
+export * from "./walletstack.js";
