@@ -8,6 +8,7 @@ import type {
   CardOrientation,
   Currency,
   SlotConstruction,
+  WalletStack,
 } from "@odk/patterns";
 import {
   BANKNOTES,
@@ -27,6 +28,13 @@ import {
   DEFAULT_TIME_MODEL,
   costNotes,
   estimateCost,
+  WALLET_STACK_DEFAULTS,
+  MAX_PANEL_SLOTS,
+  withSlotCount,
+  compileToBifoldParams,
+  generateFromStack,
+  stackContributions,
+  validateStack,
 } from "./engine.js";
 import type { CostOptions, CostRates } from "@odk/patterns";
 
@@ -180,14 +188,32 @@ export default function App() {
   const [speed, setSpeed] = useState(1);
   const [manualHours, setManualHours] = useState("");
 
+  // "Kendi cüzdanını kur" modu: kullanıcı bir modül yığını (WalletStack)
+  // kurar; yığın kanıtlanmış bifold çözücüsüne DERLENİR. Basit aile-seç
+  // paneli yerinde kalır, bu onun yanındaki ikinci kapı.
+  const [mode, setMode] = useState<"simple" | "builder">("simple");
+  const [stack, setStack] = useState<WalletStack>(WALLET_STACK_DEFAULTS);
+  const isBuilder = mode === "builder";
+
+  const setStackSetting = <K extends keyof WalletStack["settings"]>(
+    key: K,
+    value: WalletStack["settings"][K],
+  ) => setStack((s) => ({ ...s, settings: { ...s.settings, [key]: value } }));
+
+  const builderParams = useMemo(() => compileToBifoldParams(stack), [stack]);
+  const builderContrib = useMemo(() => stackContributions(stack), [stack]);
+  const builderWarnings = useMemo(() => validateStack(stack), [stack]);
+
   const isBifold = family === "bifold";
   const isTote = family === "tote";
   // Talimatlar ve PDF üç aile için de bu dar bağlamı kullanıyor.
-  const ctx = isTote
-    ? { ...tote, kind: "canta" as const }
-    : isBifold
-      ? bifold
-      : params;
+  const ctx = isBuilder
+    ? builderParams
+    : isTote
+      ? { ...tote, kind: "canta" as const }
+      : isBifold
+        ? bifold
+        : params;
 
   const set = <K extends keyof CardHolderParams>(
     key: K,
@@ -212,11 +238,13 @@ export default function App() {
     try {
       return {
         ok: true as const,
-        value: isTote
-          ? generateTote(tote)
-          : isBifold
-            ? generateBifold(bifold)
-            : generateCardHolder(params),
+        value: isBuilder
+          ? generateFromStack(stack)
+          : isTote
+            ? generateTote(tote)
+            : isBifold
+              ? generateBifold(bifold)
+              : generateCardHolder(params),
       };
     } catch (err) {
       return {
@@ -224,7 +252,7 @@ export default function App() {
         message: err instanceof Error ? err.message : String(err),
       };
     }
-  }, [isBifold, isTote, params, bifold, tote]);
+  }, [isBuilder, stack, isBifold, isTote, params, bifold, tote]);
 
   return (
     <div className="shell">
@@ -238,6 +266,27 @@ export default function App() {
           </p>
         </header>
 
+        <div className="group">
+          <span className="group-title">Mod</span>
+          <div className="segmented" role="group" aria-label="Mod">
+            <button
+              type="button"
+              aria-pressed={!isBuilder}
+              onClick={() => setMode("simple")}
+            >
+              Basit
+            </button>
+            <button
+              type="button"
+              aria-pressed={isBuilder}
+              onClick={() => setMode("builder")}
+            >
+              Kendi cüzdanını kur
+            </button>
+          </div>
+        </div>
+
+        {!isBuilder && (
         <div className="group">
           <span className="group-title">Katalog</span>
           {CATEGORIES.map((c) => (
@@ -275,8 +324,150 @@ export default function App() {
             </div>
           ))}
         </div>
+        )}
 
-        {isTote ? (
+        {isBuilder ? (
+          <fieldset className="group" style={{ border: 0, margin: 0, padding: 0 }}>
+            <legend>Kendi cüzdanını kur</legend>
+            <p className="hint">
+              Modül ekleyip çıkararak cüzdanını kur. Yığın, kanıtlanmış bifold
+              çözücüsüne derlenir — boş yığın = varsayılan bifold.
+            </p>
+            <Slider
+              label="Kart yuvası (panel başına)"
+              value={stack.slots.length}
+              min={0}
+              max={MAX_PANEL_SLOTS}
+              step={1}
+              onChange={(v) => setStack((s) => withSlotCount(s, v))}
+              hint={`Her panelde ${stack.slots.length} yuva · iki panel simetrik.`}
+            />
+            <Select
+              label="Banknot bölmesi"
+              value={stack.spine.currency}
+              options={[
+                { value: "TRY", label: "Türk Lirası" },
+                { value: "USD", label: "Dolar" },
+                { value: "EUR", label: "Euro" },
+                { value: "GBP", label: "Sterlin" },
+              ]}
+              onChange={(v) =>
+                setStack((s) => ({
+                  ...s,
+                  spine: { kind: "billPocket", currency: v as Currency },
+                }))
+              }
+            />
+            <Choice
+              label="Yuva yapımı"
+              value={stack.settings.construction}
+              options={[
+                { value: "t-slot", label: "T-slot" },
+                { value: "stacked", label: "Düz" },
+              ]}
+              onChange={(v) =>
+                setStackSetting("construction", v as SlotConstruction)
+              }
+              hint="T-slot kenarı sabit tutar; düz yuvalar kenarda birikir."
+            />
+            <Slider
+              label="Kademe (reveal)"
+              value={stack.settings.reveal}
+              min={5}
+              max={20}
+              step={1}
+              unit="mm"
+              onChange={(v) => setStackSetting("reveal", v)}
+            />
+            <Slider
+              label="Yuva derisi"
+              value={stack.settings.slotThickness}
+              min={0.4}
+              max={1.2}
+              step={0.1}
+              unit="mm"
+              onChange={(v) => setStackSetting("slotThickness", v)}
+            />
+            <Slider
+              label="Dış kabuk"
+              value={stack.settings.outerThickness}
+              min={0.6}
+              max={2}
+              step={0.1}
+              unit="mm"
+              onChange={(v) => setStackSetting("outerThickness", v)}
+            />
+            <Slider
+              label="İç kabuk"
+              value={stack.settings.innerThickness}
+              min={0.6}
+              max={1.6}
+              step={0.1}
+              unit="mm"
+              onChange={(v) => setStackSetting("innerThickness", v)}
+            />
+            <Slider
+              label="Dikiş payı"
+              value={stack.settings.stitchMargin}
+              min={2.5}
+              max={5}
+              step={0.5}
+              unit="mm"
+              onChange={(v) => setStackSetting("stitchMargin", v)}
+            />
+
+            <span className="group-title">Yığın dökümü (yüklü · yükseklik)</span>
+            <table className="readout">
+              <tbody>
+                {builderContrib.modules.map((m, i) => (
+                  <tr key={i}>
+                    <td>{m.label}</td>
+                    <td style={{ textAlign: "right" }}>
+                      {m.loadedThickness.toFixed(1)}mm
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {m.height.toFixed(0)}mm
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td>boş / yüklü</td>
+                  <td style={{ textAlign: "right" }} colSpan={2}>
+                    {builderContrib.closedThickness.toFixed(1)} /{" "}
+                    {builderContrib.loadedThickness.toFixed(1)}mm
+                  </td>
+                </tr>
+                <tr>
+                  <td>bölme genişliği</td>
+                  <td style={{ textAlign: "right" }} colSpan={2}>
+                    {builderContrib.compartmentWidth.toFixed(1)}mm
+                  </td>
+                </tr>
+                <tr>
+                  <td>asgari yükseklik</td>
+                  <td style={{ textAlign: "right" }} colSpan={2}>
+                    {builderContrib.minWalletHeight.toFixed(1)}mm
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            {builderWarnings.length > 0 && (
+              <ul className="diagnostics">
+                {builderWarnings.map((d, i) => (
+                  <li
+                    key={i}
+                    className="diagnostic"
+                    data-severity={d.severity}
+                  >
+                    <code>{d.code}</code>
+                    <span>{d.message}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </fieldset>
+        ) : isTote ? (
           <fieldset className="group" style={{ border: 0, margin: 0, padding: 0 }}>
             <legend>Çanta</legend>
             <Slider
@@ -818,11 +1009,13 @@ export default function App() {
                     printAllHoles: print.printAllHoles,
                     allowRotation: print.allowRotation,
                     scaleFactor: print.scaleFactor,
-                    title: isTote
-                      ? `Çanta ${tote.width}x${tote.height}x${tote.depth}`
-                      : isBifold
-                        ? `Bifold ${bifold.cardSlotsPerSide}+${bifold.cardSlotsPerSide} yuva`
-                        : `Kartlık ${params.cardCount} yuva`,
+                    title: isBuilder
+                      ? `Cüzdan ${stack.slots.length}+${stack.slots.length} yuva`
+                      : isTote
+                        ? `Çanta ${tote.width}x${tote.height}x${tote.depth}`
+                        : isBifold
+                          ? `Bifold ${bifold.cardSlotsPerSide}+${bifold.cardSlotsPerSide} yuva`
+                          : `Kartlık ${params.cardCount} yuva`,
                     params: ctx,
                   }),
                 )
@@ -863,7 +1056,7 @@ export default function App() {
           <Result
             value={result.value}
             ctx={ctx}
-            family={family}
+            family={isBuilder ? "bifold" : family}
             rates={rates}
             costOptions={costOptions}
           />

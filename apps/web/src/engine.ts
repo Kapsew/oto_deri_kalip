@@ -24,6 +24,13 @@ export {
   costNotes,
   estimateCost,
   DEFAULT_TIME_MODEL,
+  WALLET_STACK_DEFAULTS,
+  MAX_PANEL_SLOTS,
+  withSlotCount,
+  compileToBifoldParams,
+  generateFromStack,
+  stackContributions,
+  validateStack,
 } from "@odk/patterns";
 
 export { stitchSummary as stitchSummaryFor } from "@odk/geometry";
