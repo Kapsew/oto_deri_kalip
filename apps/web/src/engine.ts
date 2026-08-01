@@ -31,6 +31,7 @@ export {
   generateFromStack,
   stackContributions,
   validateStack,
+  SLOT_SHAPES,
 } from "@odk/patterns";
 
 export { stitchSummary as stitchSummaryFor } from "@odk/geometry";

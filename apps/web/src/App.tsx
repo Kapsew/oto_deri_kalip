@@ -9,6 +9,7 @@ import type {
   Currency,
   SlotConstruction,
   WalletStack,
+  SlotShapeId,
 } from "@odk/patterns";
 import {
   BANKNOTES,
@@ -35,6 +36,7 @@ import {
   generateFromStack,
   stackContributions,
   validateStack,
+  SLOT_SHAPES,
 } from "./engine.js";
 import type { CostOptions, CostRates } from "@odk/patterns";
 
@@ -370,6 +372,24 @@ export default function App() {
               }
               hint="T-slot kenarı sabit tutar; düz yuvalar kenarda birikir."
             />
+            {stack.settings.construction === "t-slot" && (
+              <Select
+                label="Soket ağzı"
+                value={stack.settings.slotShape ?? "t-slot"}
+                options={SLOT_SHAPES.map((s) => ({
+                  value: s.id,
+                  label: s.name,
+                }))}
+                onChange={(v) =>
+                  setStackSetting("slotShape", v as SlotShapeId)
+                }
+                hint={
+                  SLOT_SHAPES.find(
+                    (s) => s.id === (stack.settings.slotShape ?? "t-slot"),
+                  )?.summary ?? ""
+                }
+              />
+            )}
             <Slider
               label="Kademe (reveal)"
               value={stack.settings.reveal}

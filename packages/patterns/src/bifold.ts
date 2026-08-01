@@ -20,6 +20,8 @@ import {
 } from "./material.js";
 import type { SlotConstruction } from "./cardslot.js";
 import { T_SLOT_WRAP_ALLOWANCE, cardSlotGeometry, validateCardSlots } from "./cardslot.js";
+import type { SlotShapeId } from "./slotshape.js";
+import { slotShapePath } from "./slotshape.js";
 import { projectAcrossFold, projectStitchPlan } from "./stitchprojection.js";
 import type { Currency } from "./banknote.js";
 import { billPocketGeometry, validateBillPocket } from "./banknote.js";
@@ -75,6 +77,13 @@ export interface BifoldParams {
   readonly penAllowance: Mm;
   readonly pitch?: Mm;
   /**
+   * Üst kart yuvalarının AĞIZ ŞEKLİ. Verilmezse "t-slot" (mevcut düz ağız)
+   * — çıktı bit-bit aynı. Yalnızca yerel biçimi değiştirir; gövde ölçüsü,
+   * kat payı ve kalınlık şekilden BAĞIMSIZDIR. En alttaki yuva her zaman
+   * dibi kapatan düz dikdörtgen kalır.
+   */
+  readonly slotShape?: SlotShapeId;
+  /**
    * HEDEF KAPALI ÖLÇÜ.
    *
    * Verilmezse ölçüler kısıtlardan türetilir (kart + banknot + paylar).
@@ -119,22 +128,6 @@ function rectangle(x: Mm, y: Mm, w: Mm, h: Mm): Polyline {
       .lineTo(vec(x + w, y))
       .lineTo(vec(x + w, y + h))
       .lineTo(vec(x, y + h))
-      .close(),
-  );
-}
-
-function tSlotShape(width: Mm, height: Mm, mouthHeight: Mm, sideInset: Mm): Polyline {
-  const shoulder = height - mouthHeight;
-  return flattenPath(
-    path()
-      .moveTo(vec(sideInset, 0))
-      .lineTo(vec(width - sideInset, 0))
-      .lineTo(vec(width - sideInset, shoulder))
-      .lineTo(vec(width, shoulder))
-      .lineTo(vec(width, height))
-      .lineTo(vec(0, height))
-      .lineTo(vec(0, shoulder))
-      .lineTo(vec(sideInset, shoulder))
       .close(),
   );
 }
@@ -443,13 +436,22 @@ export function generateBifold(params: BifoldParams): PatternResult {
   const mouthHeight = Math.min(params.reveal, slotPieceHeight / 2);
   const sideInset = params.stitchMargin + T_SLOT_WRAP_ALLOWANCE;
 
+  const slotDims = {
+    width: panelWidth,
+    height: slotPieceHeight,
+    mouthHeight,
+    sideInset,
+  };
+  // En alttaki yuva (dibi kapatan) her zaman düz dikdörtgen; üst yuvaların
+  // ağzı kullanıcının seçtiği şekil (verilmezse "t-slot" = mevcut çıktı).
+  const upperShape: SlotShapeId = params.slotShape ?? "t-slot";
   const rectShape = roundCorners(
-    rectangle(0, 0, panelWidth, slotPieceHeight),
+    slotShapePath("duz", slotDims),
     true,
     { radius: Math.min(params.cornerRadius, slotPieceHeight / 4) },
   );
   const tShape = roundCorners(
-    tSlotShape(panelWidth, slotPieceHeight, mouthHeight, sideInset),
+    slotShapePath(upperShape, slotDims),
     true,
     { radius: Math.min(params.cornerRadius, sideInset / 2) },
   );
